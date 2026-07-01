@@ -1,0 +1,15 @@
+{
+  "sites.tenders": [],
+  "sites.partners": [],
+  "sources.genericweb": {
+    "enabled": false,
+    "timeout": 30,
+    "max_input_chars": 120000,
+    "max_output_tokens": 8192,
+    "max_pages_per_run": 60,
+    "incremental_max_pages": 5,
+    "fallback_batch": 25,
+    "engine": "builtin",
+    "wait_ms": 1500
+  }
+}

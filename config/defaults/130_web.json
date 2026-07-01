@@ -1,0 +1,11 @@
+{
+  "web.host": "0.0.0.0",
+  "web.port": 1255,
+  "web.token": "",
+  "web.read_only": false,
+  "web.run_scheduler": true,
+  "web.require_checks": true,
+  "web.digest_limit": 50,
+  "web.title": "TenderEngine",
+  "web.allow_restart": true
+}

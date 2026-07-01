@@ -1,0 +1,15 @@
+[Unit]
+Description=Tender Engine web + scheduler (user service, no sudo)
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/tenderengine
+Environment=TENDERENGINE_DB=%h/tenderengine/data/tenderengine.db
+EnvironmentFile=-%h/tenderengine/.env
+ExecStart=%h/tenderengine/.venv/bin/python %h/tenderengine/app.py web
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=default.target

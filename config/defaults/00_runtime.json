@@ -1,0 +1,8 @@
+{
+  "runtime.mode": "nightly",
+  "runtime.max_retries": 2,
+  "runtime.retry_backoff": 0,
+  "dummy.message": "tender engine online",
+  "dummy.flaky_fail_times": 0,
+  "log.level": "INFO"
+}

@@ -1,0 +1,5 @@
+{
+  "schedule.jobs": [
+    {"pipeline": "pipeline.demo", "at": ["03:00"], "enabled": false}
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "pipeline.tender_extract": [
+    "extract",
+    "extract_verify"
+  ],
+  "extract.slice_min_chars": 20000,
+  "extract.min_offset_ratio": 0.15,
+  "extract.max_section_chars": 120000,
+  "extract.section_prefix_chars": 500,
+  "extract.fallback_tail_chars": 100000,
+  "extract.skip_title_patterns": [
+    "duae"
+  ],
+  "extract.max_output_tokens": 2048,
+  "extract.section_markers": [
+    "cerinte tehnice",
+    "cerințe tehnice",
+    "specificații tehnice",
+    "specificatii tehnice",
+    "caiet de sarcini",
+    "denumirea bunurilor",
+    "lista bunurilor",
+    "parametri tehnici"
+  ]
+}

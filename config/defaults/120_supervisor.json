@@ -1,0 +1,23 @@
+{
+  "supervisor.autonomy": "auto",
+  "supervisor.escalation_model": "claude-opus-4-8",
+  "supervisor.escalate_stages": [
+    "applicability"
+  ],
+  "supervisor.max_escalations": 10,
+  "supervisor.rank_weights": {
+    "score": 0.6,
+    "margin": 0.4
+  },
+  "supervisor.digest_verdicts": [
+    "can",
+    "partial"
+  ],
+  "supervisor.coverage_stale_hours": 48,
+  "supervisor.coverage_drop_ratio": 0.3,
+  "supervisor.coverage_ok_statuses": [
+    "ok",
+    "done",
+    "success"
+  ]
+}

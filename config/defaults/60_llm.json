@@ -1,0 +1,27 @@
+{
+  "llm.provider": "auto",
+  "llm.models": {
+    "default": "claude-haiku-4-5-20251001",
+    "extract": "claude-haiku-4-5-20251001",
+    "ocr": "claude-haiku-4-5-20251001",
+    "verify": "claude-haiku-4-5-20251001",
+    "applicability": "claude-sonnet-4-6",
+    "applicability_gray": "claude-haiku-4-5-20251001",
+    "suppliers": "claude-haiku-4-5-20251001"
+  },
+  "llm.pricing": {
+    "claude-haiku-4-5-20251001": {
+      "in": 1.0,
+      "out": 5.0
+    },
+    "claude-sonnet-4-6": {
+      "in": 3.0,
+      "out": 15.0
+    },
+    "claude-opus-4-8": {
+      "in": 5.0,
+      "out": 25.0
+    }
+  },
+  "llm.cache_enabled": true
+}

@@ -1,0 +1,22 @@
+{
+  "triage.cpv_weights": {
+    "30": 2, "31": 1, "32": 3, "35": 3, "38": 2, "42": 0.5,
+    "48": 3, "50": 1, "51": 1, "64": 2, "71": 0.5, "72": 3,
+    "03": -3, "09": -2, "15": -3, "33": -2, "45": -1, "55": -3
+  },
+  "triage.keyword_weights": {
+    "camera": 2, "supraveghere": 2, "video": 1, "cctv": 2, "anpr": 3, "lpr": 3,
+    "dron": 3, "uav": 3, "бпла": 3, "server": 2, "retea": 1, "rețea": 1,
+    "network": 1, "сеть": 1, "router": 1, "switch": 1, "mikrotik": 2,
+    "fortinet": 2, "cisco": 2, "firewall": 2, "licenta": 2, "licență": 2,
+    "лиценз": 2, "antivirus": 2, "bitdefender": 2, "cyber": 2, "cibernetic": 2,
+    "spectru": 2, "spectrum": 2, "analizor": 1, "анализатор": 2, "radio": 1,
+    "telecomunica": 2, "fibra": 1, "fibră": 1, "оптичес": 1, "calculator": 1,
+    "computer": 1, "laptop": 1, "компьютер": 1, "storage": 1, "stocare": 1,
+    "gps": 1, "pki": 2, "certificat": 1, "datacenter": 2, "centru de date": 2,
+    "alimentar": -3, "продукт": -3, "construc": -1, "строит": -1, "mobilier": -3,
+    "мебель": -3, "combustibil": -2, "топлив": -2, "medicament": -2, "лекарств": -2
+  },
+  "triage.value_band": {"min": 5000, "weight_below_min": -1},
+  "triage.bucket_thresholds": {"relevant": 3, "gray": 0.5}
+}

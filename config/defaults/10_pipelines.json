@@ -1,0 +1,4 @@
+{
+  "pipeline.demo": ["dummy_echo", "dummy_shout"],
+  "pipeline.tender_triage": ["triage"]
+}
