@@ -6,16 +6,27 @@ Ubuntu 22.04, venv at ~/tenderengine/.venv, no Docker. User: Victor (speaks Russ
 HOW TO USE THIS FILE
 --------------------
 The project is split into small, focused files grouped by COMPONENT below. To work on ONE thing in a
-fresh chat, send only that component's "SEND" files (plus this map). You do NOT need the whole project.
-Each section lists: purpose, files, key contracts, config keys, tests, and what to send.
+fresh chat, send only that component's "SEND" files (plus this map) — OR, if the assistant has git
+access in its sandbox, tell it to clone the repo and read the files itself (see GIT ACCESS below).
+
+GIT ACCESS
+----------
+Repo: https://github.com/Madly222/mcp4tender (public). The assistant's sandbox has github.com,
+codeload.github.com and raw.githubusercontent.com allowlisted, so it can run
+`git clone --depth 1 https://github.com/Madly222/mcp4tender.git` directly instead of waiting for a
+tar upload. IMPORTANT: the assistant cannot push (no credentials) — Victor applies changes locally
+(tar or a pasted diff) and pushes himself. Always ask "did you push?" before assuming the repo the
+assistant sees is current; a fresh clone at the start of a new chat is the reliable way to check.
 
 CODE STYLE (STRICT)
 -------------------
 - NO COMMENTS anywhere in code.
 - Small modules, one concern each. If a file grows past ~300 lines, split it.
 - Config-driven: no hardcoded values that belong in ConfigStore.
-- Ship ONLY changed/new files as ~/tenderengine_<name>.tar.gz. Install:
-  cd ~/tenderengine && tar xzf ~/tenderengine_<name>.tar.gz -C . && systemctl --user restart tenderengine
+- Delivery: for a handful of changed files, ship a tar (~tenderengine_<name>.tar.gz) with install command
+  `cd ~/tenderengine && tar xzf ~/tenderengine_<name>.tar.gz -C . && systemctl --user restart tenderengine`.
+  For a single small/doc file, a pasted diff or the raw file to overwrite is fine too. Either way, Victor
+  commits + pushes after applying — the assistant cannot do this itself.
 
 RUN TESTS
 ---------
@@ -25,9 +36,16 @@ Web/restart tests monkeypatch web.context._schedule_restart.
 
 SANDBOX NOTES (for the assistant)
 ---------------------------------
-Filesystem resets between turns; rebuild /home/claude/te from the base tar + delivered archives if needed.
-Network allowlist has pypi.org but NOT arbitrary sites or the Playwright/Chromium CDN, so live crawling of
-real sites cannot be tested here; Chromium IS available for local file:// render tests and screenshots.
+Filesystem resets between turns. Prefer `git clone --depth 1 https://github.com/Madly222/mcp4tender.git`
+at the start of a session over waiting for an upload — it's the current source of truth (assuming Victor
+pushed). If no network/git access in a given session, fall back to rebuilding from delivered archives.
+Network allowlist has pypi.org, github.com, codeload.github.com, raw.githubusercontent.com, but NOT
+arbitrary sites or the Playwright/Chromium CDN, so live crawling of real target sites (tenderhub.md etc.)
+cannot be tested end-to-end in the sandbox — mock preview_site/analyze_site/detect_site_profile instead.
+Chromium IS available for local file:// render tests and screenshots. fastapi + python-multipart are NOT
+preinstalled — `pip install fastapi python-multipart --break-system-packages` if testing route functions
+directly (calling them as plain Python functions works fine without a real ASGI server/TestClient; just
+pass every Form(...) parameter explicitly since the FastAPI default sentinel isn't resolved that way).
 
 =====================================================================================================
 GLOBAL CONTRACTS (shared by everything)
@@ -84,7 +102,9 @@ COMPONENT MAP
 [5] GENERICWEB COLLECTOR — the site "search"/crawler
     Purpose: crawl an arbitrary listing site -> tenders, with pagination, cursor, percent-step, estimate.
     Files: workflows/collectors/genericweb.py
-    Site entry (config sites.tenders[]): {id,label,url(base),enabled,step_percent(1-100),render(bool)}.
+    Site entry (config sites.tenders[]): {id,label,url(base),enabled,step_percent(1-100),render(bool),
+    engine(optional str 'builtin'|'crawl4ai' — per-site override of sources.genericweb.engine; unset =
+    falls back to the global engine, unchanged legacy behavior)}.
     Source config sources.genericweb: {enabled,timeout,max_input_chars,max_output_tokens,max_pages_per_run,
     incremental_max_pages,fallback_batch,engine('builtin'|'crawl4ai'),wait_ms}.
     Modes via params{mode,site_id}: "backfill" (resume crawl_state cursor, stop at target NEW, advance cursor,
@@ -94,16 +114,31 @@ COMPONENT MAP
     crawl4ai or builtin); _fetch (builtin get_text/get_text_rendered); _html_to_text; _md_links_to_inline;
     _extract(gw,store,text,url,sc)->(tenders,next_url,estimate) [estimate = total_estimate OR last_page*perpage];
     _increment_page (numeric ?page=N pagination, preferred); _load_state/_save_state/_save_estimate/_save_note;
-    _normalize_item (sets normalized 'published'=extracted date, 'deadline', documents, etc.).
+    _normalize_item (sets normalized 'published'=extracted date, 'deadline', documents, etc.);
+    _site_sc(sc,site) -> per-site sc copy with sc['engine'] overridden if site.get('engine') is set (does
+    NOT mutate the shared sc dict); used in collect() for both the estimate-mode and main fetch loop.
     SEND: workflows/collectors/genericweb.py (+ engine/collectors.py if touching run/store, + config 140_sites.json)
 
-[6] SITE ANALYZER (preview + profile a site before extracting)
-    Purpose: "test" a URL (what tenders are found) and "analyze" a site (page_type, has_tenders, follow-links,
-    needs_login, recommendation) — for hub pages / "click here -> documents" sites.
+[6] SITE ANALYZER (preview + profile a site before extracting; auto-detect funnel)
+    Purpose: "test" a URL (what tenders are found), "analyze" a site (page_type, has_tenders, follow-links,
+    needs_login, recommendation), and auto-pick the cheapest working fetch method for a new site.
     Files: workflows/collectors/genericweb_analyze.py (imports genericweb as _gw; local var gw = LLMGateway).
-    Contracts: preview_site(store,conn,url,render,auth)->{chars,rendered,count,titles,next,estimate,note};
-    analyze_site(...)->{page_type,has_tenders,tender_count,follow:[{label,url}],needs_login,recommendation};
-    ANALYZE_PROMPT. NOTE: reference genericweb helpers via _gw.* so monkeypatch/runtime swaps work.
+    Contracts: preview_site(store,conn,url,render=False,auth=None,engine=None)->{chars,rendered,count,titles,
+    next,estimate,note}; analyze_site(store,conn,url,render=False,auth=None,engine=None)->{page_type,
+    has_tenders,tender_count,follow:[{label,url}],needs_login,recommendation}. `engine` param (added on top
+    of the original render/auth) forces sc['engine'] for that one call only, without touching the global
+    sources.genericweb config — used by the detect funnel to test methods in isolation.
+    detect_site_profile(store,conn,url,auth=None) -> {url,engine,render,count,estimate,needs_login,steps:[...]}:
+    runs DETECT_FUNNEL = (builtin/no-render, builtin/render=True, crawl4ai) cheapest-first on ONE test page
+    via preview_site; escalates to the next step only if count >= previous_best * DETECT_IMPROVEMENT_RATIO
+    (1.2, i.e. needs >=20% more tenders found — tune this constant against real sites if it proves too
+    strict/loose); stops immediately once count reaches the parsed estimate; if a step has count==0 and
+    chars<400 it runs analyze_site once to check needs_login and short-circuits the funnel if true (no point
+    trying pricier engines against a login wall); crawl4ai step is skipped (recorded with "skipped" key, not
+    silently dropped) if crawl4ai_fetch.crawl4ai_available() is False. `steps` in the return carries the full
+    trace of every attempt for UI display. ANALYZE_PROMPT unchanged. NOTE: reference genericweb helpers via
+    _gw.* so monkeypatch/runtime swaps work; same pattern used internally for _save_estimate/_save_note calls
+    from web/routes_sites_diag.py's /sites/detect route.
     SEND: workflows/collectors/genericweb_analyze.py (+ genericweb.py for context)
 
 [7] CRAWL4AI ENGINE (swappable collection engine)
@@ -155,12 +190,22 @@ COMPONENT MAP
                                   _crawl_rows,_set_auth,_bar.
       web/sites_view.py        -> GET /sites (the whole page HTML builder). Edit here for the Sites page layout.
       web/routes_sites.py      -> CRUD endpoints: add,settings,auth,reset-cursor,remove,toggle,search-toggle,
-                                  render-toggle; and it imports the two modules below (registration).
+                                  render-toggle; and it imports the two modules below (registration). /sites/add
+                                  now also accepts an optional `engine` form field (builtin|crawl4ai) to store
+                                  a per-site override; empty/omitted = no key set (backward compatible).
       web/routes_sites_collect.py -> estimate,collect,collect-batch,wipe,mtender-toggle,collect-mtender,engine-toggle.
-      web/routes_sites_diag.py -> preview,analyze (imports preview_site/analyze_site from genericweb_analyze).
+      web/routes_sites_diag.py -> preview,analyze (imports preview_site/analyze_site from genericweb_analyze);
+                                  detect (POST /sites/detect: runs detect_site_profile on url/label/step/
+                                  login/password, adds the site immediately with the detected engine+render;
+                                  if needs_login it's added DISABLED with credentials saved so Victor can see/
+                                  fix them rather than re-typing blind; on success estimate+note are persisted
+                                  to crawl_state via _gw._save_estimate/_save_note).
     SEND (per task): editing the page -> sites_view.py (+ sites_common.py); collection buttons ->
-    routes_sites_collect.py; test/analyze reports -> routes_sites_diag.py; site CRUD -> routes_sites.py.
+    routes_sites_collect.py; test/analyze/detect reports -> routes_sites_diag.py; site CRUD -> routes_sites.py.
     Always include sites_common.py when a route module needs its helpers.
+    UI: sites_view.py add-site form has a second submit button "detect & add" (formaction=/sites/detect,
+    reuses the same label/url/step_percent/login/password fields) next to the manual "+ add site"; the sites
+    table shows "engine: X" under the progress bar when a site has a non-default engine set.
 
 [13] WEB — OTHER PAGES
     Files: web/routes_digest.py (/, /tender, /tenders, /triage, /applicability, /suppliers, /verifications,
@@ -187,10 +232,25 @@ KEY FACTS / DECISIONS
 - Estimate: sites rarely print a total; genericweb derives it from the pagination last_page * per-page count.
 - Honest stall: on an empty page below ~90% of estimate, mark NOT exhausted with a note explaining the JS boundary.
 - Engines: builtin (plain fetch + optional Playwright) vs crawl4ai (library renders JS + clean markdown). Toggle on /sites.
+- Adding a new site no longer requires guessing the JS toggle: "detect & add" (POST /sites/detect) runs a
+  cheap-to-expensive funnel on ONE test page (see [6] detect_site_profile) and stores the winning method as
+  a per-site config override — no DB migration needed, it's just another field in sites.tenders[] JSON.
+- Verified against tenderhub.md/ro (Romanian B2G tender aggregator: UNDP/IOM/UIPAC/UNICEF postings) — it is
+  plain server-rendered HTML with a real table, no login for browsing, so builtin/no-render should win the
+  funnel there; pagination mechanism (numeric ?page=N vs AJAX) was NOT verified live (sandbox has no network
+  route to tenderhub.md) — check this first if incremental/backfill on it behaves oddly.
 
 OPEN TODOS
 ----------
+- STEP 2 (next up, not yet built): periodic incremental re-check per site. Needs a config key like
+  collect.incremental_interval_hours (per-site override, same pattern as engine/render) and a scheduler hook
+  (engine/scheduler.py) that calls run_collector("genericweb", params={mode:"incremental", site_id}) on that
+  cadence using the site's already-detected engine/render — no re-running detect_site_profile every cycle.
+  Optional refinement discussed but not built: if incremental yields 0 new tenders for N consecutive runs on
+  a site that used to have tenders, that's a good trigger to auto-rerun detect_site_profile (site may have
+  changed its rendering) rather than silently going stale.
 - Fix/verify the analysis pipeline (triage->extract->applicability) on the MTender data.
-- Optional: dedicated UNDP API source (if a public feed exists).
+- Optional: dedicated UNDP API source (if a public feed exists) — note tenderhub.md/ro already aggregates a
+  lot of UNDP/IOM/UIPAC postings and turned out to be plain HTML, may cover this need without a bespoke API.
 - Optional: make MTender collection "batched with progress" like genericweb.
 - Verify Crawl4AI on the server once installed (may need a 1-line _crawl tweak for the installed version).
