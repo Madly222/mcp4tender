@@ -1,0 +1,196 @@
+TENDERENGINE — MAINTENANCE MAP (for AI handoff)
+================================================
+B2G tender-monitoring platform for SC Rapid Link SRL (Moldova). Python 3.10, FastAPI + SQLite,
+Ubuntu 22.04, venv at ~/tenderengine/.venv, no Docker. User: Victor (speaks Russian; UI is English).
+
+HOW TO USE THIS FILE
+--------------------
+The project is split into small, focused files grouped by COMPONENT below. To work on ONE thing in a
+fresh chat, send only that component's "SEND" files (plus this map). You do NOT need the whole project.
+Each section lists: purpose, files, key contracts, config keys, tests, and what to send.
+
+CODE STYLE (STRICT)
+-------------------
+- NO COMMENTS anywhere in code.
+- Small modules, one concern each. If a file grows past ~300 lines, split it.
+- Config-driven: no hardcoded values that belong in ConfigStore.
+- Ship ONLY changed/new files as ~/tenderengine_<name>.tar.gz. Install:
+  cd ~/tenderengine && tar xzf ~/tenderengine_<name>.tar.gz -C . && systemctl --user restart tenderengine
+
+RUN TESTS
+---------
+python -m pytest tests/ -q --ignore=tests/test_phase4b.py
+(test_phase4b needs pymupdf; passes on the server, skip in a bare sandbox.)
+Web/restart tests monkeypatch web.context._schedule_restart.
+
+SANDBOX NOTES (for the assistant)
+---------------------------------
+Filesystem resets between turns; rebuild /home/claude/te from the base tar + delivered archives if needed.
+Network allowlist has pypi.org but NOT arbitrary sites or the Playwright/Chromium CDN, so live crawling of
+real sites cannot be tested here; Chromium IS available for local file:// render tests and screenshots.
+
+=====================================================================================================
+GLOBAL CONTRACTS (shared by everything)
+=====================================================================================================
+- Entry points: app.py bootstrap()->(conn,store,seeded). web/server.py create_app(db_path)->FastAPI.
+- ConfigStore (engine/config_store.py): store.get(key,default) / store.all() / store.set(key,value,actor,note)
+  / store.reload() / store.seed_defaults(dir). store.conn is the sqlite connection. Keys are namespaced
+  strings; values may be dicts or scalars (e.g. "sources.genericweb" -> dict, "collect.max_age_days" -> int).
+- Defaults live in config/defaults/*.json (seeded once at bootstrap; new keys auto-added, existing untouched).
+- Pipeline status flow (tenders.status): collect->"new"; triage->"triaged"; extract->"extracted";
+  applicability->"analyzed"; suppliers->"sourced".
+- external_id: genericweb = "<site_id>:<sha1(url|ref|title)[:16]>"; mtender = ocid-based.
+- DB tables (engine/db.py, CREATE IF NOT EXISTS + _migrate/_column_exists on each boot): tenders, verdicts,
+  extractions, verifications, suppliers, raw_documents, source_state, source_runs, pipeline_runs, stage_runs,
+  llm_cache, configs, config_meta, audit_log, crawl_state, dismissed_tenders, supervisor_runs.
+- LLM: engine/llm.py LLMGateway(store,conn).complete(stage,system,messages,max_tokens,prefill) with llm_cache.
+
+=====================================================================================================
+COMPONENT MAP
+=====================================================================================================
+
+[1] APP / CLI ENTRY
+    Purpose: bootstrap + CLI subcommands (collect, triage, extract, applicability, suppliers, web, ...).
+    Files: app.py
+    Contract: bootstrap()->(conn,store,seeded); cmd_* functions mirror pipeline selection queries.
+    SEND: app.py
+
+[2] CONFIG STORE + DEFAULTS
+    Purpose: versioned key/value config with audit + seed defaults.
+    Files: engine/config_store.py ; config/defaults/*.json ; web/config_meta.py (tooltips: describe(key))
+    Config files map 1:1 to areas (30_sources.json=sources+collect.max_age_days, 140_sites.json=genericweb/sites,
+    50_triage.json, 80_extract.json, 100_applicability.json, 110_suppliers.json, 60_llm.json, ...).
+    SEND: engine/config_store.py, the relevant config/defaults/*.json, web/config_meta.py
+
+[3] DB / SCHEMA
+    Purpose: schema + migrations. Add a table/column here; it auto-applies on next boot.
+    Files: engine/db.py
+    Key tables for collection: crawl_state(site_id PK, next_url, auth_json, last_run_at, total_collected,
+    exhausted, total_estimate, note); dismissed_tenders(external_id PK, source, reason, dismissed_at).
+    SEND: engine/db.py
+
+[4] COLLECTOR FRAMEWORK + AGE FILTER (filtration)
+    Purpose: registry, run_collector loop, storage/dedup, and the max-age filter (applies to ALL sources).
+    Files: engine/collectors.py
+    Contracts: register_collector(name); get_collector(name); CollectContext(config,cursor,source_config,params);
+    CollectResult(items,cursor,fetched); CollectedItem(external_id,normalized,raw); Collector.collect(ctx).
+    run_collector(source,store,conn,params)->{status,fetched,new,too_old,cursor}. _store_item suppresses
+    dismissed_tenders and upserts tenders/raw_documents.
+    AGE FILTER: config key collect.max_age_days (int days, 0=off). _parse_date(str)->ts (ISO YYYY-MM-DD,
+    DD.MM.YYYY, DD/MM/YYYY). _tender_ref_ts(normalized)=max of published/deadline/enquiry_deadline. Items older
+    than now-days are skipped BEFORE storage (undatable items are KEPT); counted as too_old.
+    SEND: engine/collectors.py (+ config/defaults/30_sources.json for the default)
+
+[5] GENERICWEB COLLECTOR — the site "search"/crawler
+    Purpose: crawl an arbitrary listing site -> tenders, with pagination, cursor, percent-step, estimate.
+    Files: workflows/collectors/genericweb.py
+    Site entry (config sites.tenders[]): {id,label,url(base),enabled,step_percent(1-100),render(bool)}.
+    Source config sources.genericweb: {enabled,timeout,max_input_chars,max_output_tokens,max_pages_per_run,
+    incremental_max_pages,fallback_batch,engine('builtin'|'crawl4ai'),wait_ms}.
+    Modes via params{mode,site_id}: "backfill" (resume crawl_state cursor, stop at target NEW, advance cursor,
+    honest stall note if it stops below estimate), "incremental" ("Check new" front pages), "estimate"
+    (page 1 only -> total_estimate + note, stores nothing).
+    Key fns: _page_text(url,sc,headers,render,max_chars)->(text,rendered) = THE single fetch entry (routes to
+    crawl4ai or builtin); _fetch (builtin get_text/get_text_rendered); _html_to_text; _md_links_to_inline;
+    _extract(gw,store,text,url,sc)->(tenders,next_url,estimate) [estimate = total_estimate OR last_page*perpage];
+    _increment_page (numeric ?page=N pagination, preferred); _load_state/_save_state/_save_estimate/_save_note;
+    _normalize_item (sets normalized 'published'=extracted date, 'deadline', documents, etc.).
+    SEND: workflows/collectors/genericweb.py (+ engine/collectors.py if touching run/store, + config 140_sites.json)
+
+[6] SITE ANALYZER (preview + profile a site before extracting)
+    Purpose: "test" a URL (what tenders are found) and "analyze" a site (page_type, has_tenders, follow-links,
+    needs_login, recommendation) — for hub pages / "click here -> documents" sites.
+    Files: workflows/collectors/genericweb_analyze.py (imports genericweb as _gw; local var gw = LLMGateway).
+    Contracts: preview_site(store,conn,url,render,auth)->{chars,rendered,count,titles,next,estimate,note};
+    analyze_site(...)->{page_type,has_tenders,tender_count,follow:[{label,url}],needs_login,recommendation};
+    ANALYZE_PROMPT. NOTE: reference genericweb helpers via _gw.* so monkeypatch/runtime swaps work.
+    SEND: workflows/collectors/genericweb_analyze.py (+ genericweb.py for context)
+
+[7] CRAWL4AI ENGINE (swappable collection engine)
+    Purpose: use the Crawl4AI library (git, Apache-2.0) to render JS + return clean markdown instead of builtin.
+    Files: engine/crawl4ai_fetch.py
+    Contracts: crawl4ai_available(); fetch_markdown(url,timeout,wait_ms,headers)->markdown. _run_async is a sync
+    bridge (asyncio.run, or worker thread if a loop runs). _crawl uses AsyncWebCrawler+BrowserConfig+
+    CrawlerRunConfig; result.markdown handled as str or object (fit_markdown/raw_markdown) — MAY need a 1-line
+    tweak per installed crawl4ai version. Selected via sources.genericweb.engine=="crawl4ai" (see genericweb._page_text).
+    Install: .venv/bin/pip install crawl4ai ; playwright install chromium.
+    SEND: engine/crawl4ai_fetch.py (+ genericweb.py where _page_text picks the engine)
+
+[8] JS RENDER (builtin Playwright)
+    Purpose: optional headless render for builtin engine (per-site render=on).
+    Files: engine/render.py
+    Contracts: render_available(); get_text_rendered(url,timeout,headers,wait_ms)->html (chromium --no-sandbox).
+    SEND: engine/render.py
+
+[9] MTENDER API COLLECTOR (official OCDS source)
+    Purpose: reliable full MTender via public.mtender.gov.md OCDS API (mtender.md web is JS -> not scraped).
+    Files: workflows/collectors/mtender.py
+    Config sources.mtender: {enabled,list_url,record_url_template,timeout,page_limit,max_records_per_run,
+    backfill_days}. normalize_record sets 'deadline','enquiry_deadline','date','published'(=release date).
+    SEND: workflows/collectors/mtender.py (+ config/defaults/30_sources.json)
+
+[10] ANALYSIS PIPELINE (triage -> extract -> applicability -> suppliers -> verify)
+    Purpose: turn collected "new" tenders into analyzed/sourced ones.
+    Files: workflows/triage.py, workflows/extract.py, workflows/applicability.py, workflows/suppliers.py,
+    workflows/verify.py ; engine/orchestrator.py (process_stored_tenders(pipeline,store,conn,statuses,limit);
+    process_selected_tenders(pipeline,store,conn,tender_ids,next_status)).
+    On-demand runner + funnel: workflows/analysis.py (funnel_counts(conn); run_triage/run_extract/
+    run_applicability/run_suppliers; run_all; clear_irrelevant(conn,reject_verdicts); wipe_collected(conn,source,
+    forget)). KNOWN TODO: verify triage->extract->applicability works end-to-end on the ~1520 MTender tenders.
+    SEND: the specific stage file(s) + workflows/analysis.py + engine/orchestrator.py
+
+[11] WEB — CORE
+    Purpose: FastAPI app, auth/context, shared HTML render, styles.
+    Files: web/server.py (create_app; include_router digest/config/sites/analyze; /healthz /login);
+    web/context.py (_open,_check_auth,_schedule_restart,add_context_middleware; request.state.conn/store/readonly);
+    web/render.py (_e,_ts,_table,_layout,_login,NAV,_control,...); web/styles.py (CSS dark theme; edit for look).
+    SEND: web/server.py, web/context.py, web/render.py, web/styles.py (only those you touch)
+
+[12] WEB — SITES UI (split into small modules, ONE shared router)
+    Purpose: the /sites page + all its endpoints. Shared APIRouter lives in web/sites_common.py; the other
+    modules decorate it; web/routes_sites.py imports the siblings so their routes register; server.py includes
+    routes_sites.router once.
+    Files:
+      web/sites_common.py      -> router = APIRouter(); helpers _redir_sites,_validate_url,_probe_url,
+                                  _crawl_rows,_set_auth,_bar.
+      web/sites_view.py        -> GET /sites (the whole page HTML builder). Edit here for the Sites page layout.
+      web/routes_sites.py      -> CRUD endpoints: add,settings,auth,reset-cursor,remove,toggle,search-toggle,
+                                  render-toggle; and it imports the two modules below (registration).
+      web/routes_sites_collect.py -> estimate,collect,collect-batch,wipe,mtender-toggle,collect-mtender,engine-toggle.
+      web/routes_sites_diag.py -> preview,analyze (imports preview_site/analyze_site from genericweb_analyze).
+    SEND (per task): editing the page -> sites_view.py (+ sites_common.py); collection buttons ->
+    routes_sites_collect.py; test/analyze reports -> routes_sites_diag.py; site CRUD -> routes_sites.py.
+    Always include sites_common.py when a route module needs its helpers.
+
+[13] WEB — OTHER PAGES
+    Files: web/routes_digest.py (/, /tender, /tenders, /triage, /applicability, /suppliers, /verifications,
+    /coverage, /runs, /stages, /audit); web/routes_config.py (/config editing + /admin/restart);
+    web/routes_analyze.py (/analyze funnel page + run buttons -> workflows/analysis.py).
+    SEND: the one page file + web/render.py if shared render changes.
+
+[14] DOCUMENTS
+    Files: engine/documents.py (fetch/parse tender documents; pymupdf-based -> test_phase4b skipped in sandbox).
+    SEND: engine/documents.py
+
+[15] SUPPORT / MISC
+    engine/http.py (get_text(url,timeout,retries,backoff,headers), get_json); engine/jsonutil.py (loads_loose);
+    engine/hashing.py (content_hash); engine/scheduler.py, engine/runner.py, engine/registry.py, engine/checks.py,
+    engine/contracts.py; tools/view.py, tools/config_cli.py; workflows/supervisor.py, workflows/demo.py.
+
+=====================================================================================================
+KEY FACTS / DECISIONS
+=====================================================================================================
+- Collection and analysis are SEPARATE: collect only stores status="new"; analysis runs on demand (Analyze page).
+- mtender.md is a JS SPA: its server HTML renders only the first ~7 pages, then JS. Generic scraping caps ~60-70.
+  RELIABLE MTender = the sources.mtender OCDS API (confirmed: 1520 collected). Do not scrape mtender.md.
+- SharePoint/UNDP doc libraries need login+browser -> analyzer flags needs_login; not scrapeable; use API/RSS.
+- Estimate: sites rarely print a total; genericweb derives it from the pagination last_page * per-page count.
+- Honest stall: on an empty page below ~90% of estimate, mark NOT exhausted with a note explaining the JS boundary.
+- Engines: builtin (plain fetch + optional Playwright) vs crawl4ai (library renders JS + clean markdown). Toggle on /sites.
+
+OPEN TODOS
+----------
+- Fix/verify the analysis pipeline (triage->extract->applicability) on the MTender data.
+- Optional: dedicated UNDP API source (if a public feed exists).
+- Optional: make MTender collection "batched with progress" like genericweb.
+- Verify Crawl4AI on the server once installed (may need a 1-line _crawl tweak for the installed version).

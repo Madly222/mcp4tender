@@ -1,0 +1,60 @@
+{
+  "pipeline.tender_suppliers": [
+    "suppliers",
+    "suppliers_verify"
+  ],
+  "suppliers.web_enabled": false,
+  "suppliers.margin_min": 0.15,
+  "suppliers.max_output_tokens": 2048,
+  "suppliers.proceed_verdicts": [
+    "can",
+    "partial"
+  ],
+  "suppliers.catalog": [
+    {
+      "id": "cam-anpr-jenoptik",
+      "supplier": "Jenoptik (via VAPEKS RO)",
+      "denumire": "Cameră ANPR 4K edge",
+      "model": "Jenoptik VECTOR ANPR",
+      "vendor": "Jenoptik",
+      "price": 2800,
+      "currency": "EUR",
+      "specs": "8MP 4K, ALPR edge, IP67, integrare Genetec, PoE++"
+    },
+    {
+      "id": "cam-radar-jenoptik",
+      "supplier": "Jenoptik (via VAPEKS RO)",
+      "denumire": "Cameră radar FMCW",
+      "model": "Jenoptik TraffiStar",
+      "vendor": "Jenoptik",
+      "price": 4200,
+      "currency": "EUR",
+      "specs": "radar FMCW certificat metrologic, ANPR, IP67"
+    },
+    {
+      "id": "sw-poe-cisco",
+      "supplier": "Rapid Link stoc",
+      "denumire": "Switch PoE++ 8 porturi",
+      "model": "Cisco CBS350-8FP-2G",
+      "vendor": "Cisco",
+      "price": 650,
+      "currency": "EUR",
+      "specs": "IEEE 802.3bt PoE++, 8x GbE"
+    },
+    {
+      "id": "genetec-lic",
+      "supplier": "Genetec (via partener)",
+      "denumire": "Licență Genetec Security Center",
+      "model": "Genetec SC camera license",
+      "vendor": "Genetec",
+      "price": 180,
+      "currency": "EUR",
+      "specs": "licență per cameră, integrare nativă"
+    }
+  ],
+  "suppliers.fx_rates": {
+    "EUR->MDL": 19.6,
+    "USD->MDL": 18.0,
+    "RON->MDL": 3.9
+  }
+}

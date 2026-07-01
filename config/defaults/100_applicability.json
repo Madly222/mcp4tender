@@ -1,0 +1,38 @@
+{
+  "pipeline.tender_applicability": ["applicability", "applicability_verify"],
+  "applicability.max_output_tokens": 2048,
+  "applicability.max_extraction_chars": 30000,
+  "applicability.proceed_verdicts": ["can", "partial"],
+  "applicability.model_by_bucket": {"relevant": "applicability", "gray": "applicability_gray"},
+  "capabilities.profile": {
+    "company": "SC Rapid Link SRL",
+    "experience_years": 18,
+    "country": "Moldova",
+    "eu_arm": "VAPEKS RO SRL (Romania) - vehicul de achiziții UE",
+    "certifications": ["ISO 9001", "ISO 27001", "ISO 14001", "ISO 45001"],
+    "vendor_partnerships": {
+      "Cisco": "partener autorizat - networking",
+      "Fortinet": "partener autorizat - securitate cibernetică / firewall",
+      "Dell": "partener autorizat - servere / storage / stații de lucru",
+      "DJI Enterprise": "partener autorizat - drone / UAV / LiDAR",
+      "Bitdefender": "partener autorizat - securitate endpoint / antivirus",
+      "MikroTik": "partener autorizat - networking"
+    },
+    "references": ["IGPF (Poliția de Frontieră)", "STISC", "Aeroportul Internațional Chișinău", "IOM", "UNDP"],
+    "verticals": [
+      "infrastructură de rețea și modernizare",
+      "supraveghere video / Safe City / CCTV",
+      "ANPR / controlul traficului / enforcement",
+      "drone / UAV / LiDAR / drone agricole",
+      "PKI / HSM / eIDAS / QTSP",
+      "securitate cibernetică / NIS2 / SOC",
+      "securitate OT/ICS",
+      "sisteme de supraveghere a frontierei",
+      "body cameras pentru poliție",
+      "centre de date"
+    ],
+    "services": ["integrare de sisteme", "proiectare și inginerie", "furnizare", "instalare și configurare", "mentenanță și suport", "instruire"],
+    "partner_network": ["Elbit", "CONTROP", "Defendec", "DERMALOG", "Jenoptik", "SiRcom", "HQE Systems"],
+    "notes": "Puternic în licitații B2G/instituționale. Poate acționa ca integrator și furniza echipamente prin parteneriate. Pentru tehnologii fără parteneriat direct poate angaja subfurnizori din rețeaua de parteneri."
+  }
+}

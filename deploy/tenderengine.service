@@ -1,0 +1,20 @@
+[Unit]
+Description=Tender Engine service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tenderengine
+Group=tenderengine
+WorkingDirectory=/opt/tenderengine
+Environment=TENDERENGINE_DB=/opt/tenderengine/data/tenderengine.db
+ExecStart=/opt/tenderengine/.venv/bin/python /opt/tenderengine/app.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

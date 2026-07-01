@@ -1,0 +1,8 @@
+{
+  "pipeline.tender_extract": ["extract", "extract_verify"],
+  "verify.strictness": "strict",
+  "verify.max_retries": 1,
+  "verify.flag_confidence_threshold": 0.6,
+  "verify.max_source_chars": 60000,
+  "verify.max_output_tokens": 1024
+}

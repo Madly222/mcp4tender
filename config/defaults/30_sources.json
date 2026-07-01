@@ -1,0 +1,11 @@
+{
+  "sources.mtender": {
+    "enabled": false,
+    "list_url": "https://public.mtender.gov.md/tenders",
+    "record_url_template": "https://public.mtender.gov.md/tenders/{ocid}",
+    "timeout": 30,
+    "page_limit": 3,
+    "max_records_per_run": 50,
+    "backfill_days": 14
+  }
+}

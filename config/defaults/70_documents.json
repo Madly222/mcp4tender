@@ -1,0 +1,12 @@
+{
+  "documents.cache_dir": "data/docs",
+  "documents.timeout": 60,
+  "documents.read_types": ["biddingDocuments", "tenderNotice"],
+  "documents.skip_formats": ["doc", "odt", "zip", "rar", "xls", "xlsx"],
+  "documents.vision_enabled": true,
+  "documents.scanned_threshold": 100,
+  "documents.max_pages_ocr": 5,
+  "documents.ocr_max_tokens": 4096,
+  "documents.max_docs_per_tender": 3,
+  "documents.ocr_prompt": "Transcrie integral textul vizibil din acest document tehnic de achiziție, păstrând structura (titluri, tabele, liste). Răspunde doar cu textul transcris, fără comentarii."
+}
