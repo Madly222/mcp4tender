@@ -47,8 +47,8 @@ def _crawl_rows(conn, site_ids):
         return out
     qs = ",".join("?" * len(ids))
     for r in conn.execute(
-        f"SELECT site_id, next_url, auth_json, total_collected, exhausted, total_estimate, note "
-        f"FROM crawl_state WHERE site_id IN ({qs})", ids).fetchall():
+        f"SELECT site_id, next_url, auth_json, total_collected, exhausted, total_estimate, "
+        f"note, detected_count FROM crawl_state WHERE site_id IN ({qs})", ids).fetchall():
         out[r["site_id"]] = r
     return out
 
@@ -62,10 +62,13 @@ def _set_auth(conn, site_id, auth):
     conn.commit()
 
 
-def _bar(collected, est):
+def _bar(collected, est, detected=None):
     if est and est > 0:
         pct = min(100, round(collected / est * 100))
         label = f"{collected} / {est} ({pct}%)"
+    elif detected and detected > 0:
+        pct = 0
+        label = f"{collected} collected · {detected}+ found on site"
     else:
         pct = 0
         label = f"{collected} collected · est. unknown"

@@ -126,7 +126,7 @@ _ENGINE_LABELS = {"builtin": "plain HTML", "crawl4ai": "crawl4ai (JS + markdown)
 
 @router.post("/sites/detect")
 def sites_detect(request: Request, label: str = Form(""), url: str = Form(""),
-                 step_percent: str = Form("10"), login: str = Form(""),
+                 batch_size: str = Form("30"), login: str = Form(""),
                  password: str = Form("")):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -148,12 +148,12 @@ def sites_detect(request: Request, label: str = Form(""), url: str = Form(""),
     lst = list(store.get("sites.tenders", []) or [])
     sid = uuid.uuid4().hex[:8]
     try:
-        step = max(1, min(100, int(step_percent)))
+        step = max(1, min(1000, int(batch_size)))
     except (TypeError, ValueError):
-        step = 10
+        step = 30
     entry = {"id": sid, "label": label.strip() or target, "url": target,
              "enabled": not profile["needs_login"], "render": bool(profile["render"]),
-             "engine": profile["engine"], "step_percent": step}
+             "engine": profile["engine"], "batch_size": step}
     lst.append(entry)
     store.set("sites.tenders", lst, actor="web", note="add site via auto-detect")
     if auth:
@@ -162,8 +162,12 @@ def sites_detect(request: Request, label: str = Form(""), url: str = Form(""),
     method = _ENGINE_LABELS.get(profile["engine"], profile["engine"])
     if profile["render"] and profile["engine"] != "crawl4ai":
         method += " + JS render"
-    if profile.get("estimate"):
-        _gw._save_estimate(conn, sid, profile["estimate"])
+    _gw._save_detected(conn, sid, profile["count"])
+    est = profile.get("estimate")
+    if not est and profile["count"] > 0 and not profile.get("next"):
+        est = profile["count"]
+    if est:
+        _gw._save_estimate(conn, sid, est)
 
     if profile["needs_login"]:
         _gw._save_note(conn, sid, "needs login — added disabled; set credentials, "
@@ -173,10 +177,10 @@ def sites_detect(request: Request, label: str = Form(""), url: str = Form(""),
                                 "add credentials (HTTP Basic only), then enable it")
 
     note = f"auto-detected: {method}, {profile['count']} tenders on test page"
-    if profile.get("estimate"):
-        note += f" (est. {profile['estimate']} total)"
+    if est:
+        note += f" (est. {est} total)"
     _gw._save_note(conn, sid, note)
     msg = f"added '{entry['label']}' — {method}, {profile['count']} tenders found"
-    if profile.get("estimate"):
-        msg += f", ~{profile['estimate']} total"
+    if est:
+        msg += f", ~{est} total"
     return _redir_sites(msg=msg)

@@ -13,7 +13,7 @@ from web.sites_common import (_bar, _crawl_rows, _probe_url, _redir_sites,
 @router.post("/sites/add")
 def sites_add(request: Request, kind: str = Form(...), label: str = Form(""),
               url: str = Form(""), category: str = Form(""), notes: str = Form(""),
-              step_percent: str = Form("10"), login: str = Form(""), password: str = Form(""),
+              batch_size: str = Form("30"), login: str = Form(""), password: str = Form(""),
               render: str = Form(""), engine: str = Form("")):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -32,9 +32,9 @@ def sites_add(request: Request, kind: str = Form(...), label: str = Form(""),
         if engine.strip().lower() in ("builtin", "crawl4ai"):
             entry["engine"] = engine.strip().lower()
         try:
-            entry["step_percent"] = max(1, min(100, int(step_percent)))
+            entry["batch_size"] = max(1, min(1000, int(batch_size)))
         except (TypeError, ValueError):
-            entry["step_percent"] = 10
+            entry["batch_size"] = 30
     else:
         entry["category"] = category.strip()
         entry["notes"] = notes.strip()
@@ -62,20 +62,20 @@ def sites_add(request: Request, kind: str = Form(...), label: str = Form(""),
                         f"saved anyway, check the URL")
 
 @router.post("/sites/settings")
-def sites_settings(request: Request, id: str = Form(...), step_percent: str = Form("10")):
+def sites_settings(request: Request, id: str = Form(...), batch_size: str = Form("30")):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
     try:
-        n = max(1, min(100, int(step_percent)))
+        n = max(1, min(1000, int(batch_size)))
     except (TypeError, ValueError):
-        n = 10
+        n = 30
     store = request.state.store
     lst = list(store.get("sites.tenders", []) or [])
     for s in lst:
         if s.get("id") == id:
-            s["step_percent"] = n
-    store.set("sites.tenders", lst, actor="web", note="set step via web")
-    return _redir_sites(msg=f"step set: {n}%")
+            s["batch_size"] = n
+    store.set("sites.tenders", lst, actor="web", note="set batch via web")
+    return _redir_sites(msg=f"batch set: {n} tenders")
 
 @router.post("/sites/auth")
 def sites_auth(request: Request, id: str = Form(...), login: str = Form(""),

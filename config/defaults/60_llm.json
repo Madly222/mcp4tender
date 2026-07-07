@@ -5,7 +5,7 @@
     "extract": "claude-haiku-4-5-20251001",
     "ocr": "claude-haiku-4-5-20251001",
     "verify": "claude-haiku-4-5-20251001",
-    "applicability": "claude-sonnet-4-6",
+    "applicability": "claude-sonnet-5",
     "applicability_gray": "claude-haiku-4-5-20251001",
     "suppliers": "claude-haiku-4-5-20251001"
   },
@@ -13,6 +13,10 @@
     "claude-haiku-4-5-20251001": {
       "in": 1.0,
       "out": 5.0
+    },
+    "claude-sonnet-5": {
+      "in": 3.0,
+      "out": 15.0
     },
     "claude-sonnet-4-6": {
       "in": 3.0,

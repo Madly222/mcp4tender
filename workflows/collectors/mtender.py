@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import datetime as dt
+import re
 
 from engine.collectors import (CollectContext, CollectedItem, CollectResult,
                                Collector, register_collector)
 from engine.http import get_json
+
+_OCID_BASE_RE = re.compile(r"^(ocds-[a-z0-9]+-[A-Z]{2}-\d+)")
+
+
+def base_ocid(ocid):
+    m = _OCID_BASE_RE.match(str(ocid or ""))
+    return m.group(1) if m else str(ocid or "")
 
 
 def _initial_cursor(backfill_days):
@@ -121,6 +129,7 @@ def normalize_record(record_package, ocid):
         "cpv": _cpv(crs),
         "deadline": _first(crs, lambda cr: ((cr.get("tender") or {}).get("tenderPeriod") or {}).get("endDate")),
         "enquiry_deadline": _first(crs, lambda cr: ((cr.get("tender") or {}).get("enquiryPeriod") or {}).get("endDate")),
+        "publication_date": _first(crs, lambda cr: ((cr.get("tender") or {}).get("datePublished")) or cr.get("date")),
         "documents": _documents(crs),
         "date": _first(crs, lambda cr: cr.get("date")),
     }
@@ -157,13 +166,14 @@ class MTenderCollector(Collector):
 
             for entry in data:
                 ocid = entry.get("ocid")
-                if not ocid or ocid in seen:
+                base = base_ocid(ocid)
+                if not base or base in seen:
                     continue
-                seen.add(ocid)
+                seen.add(base)
                 try:
                     record = get_json(record_tpl.format(ocid=ocid), timeout=timeout)
-                    normalized = normalize_record(record, ocid)
-                    items.append(CollectedItem(external_id=ocid, raw=record,
+                    normalized = normalize_record(record, base)
+                    items.append(CollectedItem(external_id=base, raw=record,
                                               normalized=normalized))
                 except Exception:
                     continue

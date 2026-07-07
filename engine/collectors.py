@@ -52,6 +52,7 @@ class CollectResult:
     items: list = field(default_factory=list)
     cursor: str | None = None
     fetched: int = 0
+    too_old: int = 0
 
 
 class Collector(ABC):
@@ -180,7 +181,7 @@ def run_collector(source, store, conn, params=None):
         log.info("source=%s done: fetched=%d new=%d (deduped=%d)",
                  source, result.fetched, new_count, result.fetched - new_count)
         return {"source": source, "status": "done", "fetched": result.fetched,
-                "new": new_count, "cursor": cursor_after}
+                "new": new_count, "too_old": result.too_old, "cursor": cursor_after}
     except Exception as exc:
         log.exception("source=%s collect failed", source)
         conn.execute(

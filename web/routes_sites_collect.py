@@ -39,7 +39,10 @@ def sites_collect(request: Request):
         return _redir_sites(err=f"collect: {ex}")
     if r.get("status") == "disabled":
         return _redir_sites(err="web search is off (turn it on first)")
-    return _redir_sites(msg=f"check new: {r.get('new', 0)} new of {r.get('fetched', 0)} seen")
+    msg = f"check new: {r.get('new', 0)} new of {r.get('fetched', 0)} seen"
+    if r.get("too_old"):
+        msg += f", skipped {r['too_old']} older than the age limit"
+    return _redir_sites(msg=msg)
 
 @router.post("/sites/collect-batch")
 def sites_collect_batch(request: Request, site_id: str = Form("")):
@@ -55,7 +58,10 @@ def sites_collect_batch(request: Request, site_id: str = Form("")):
         return _redir_sites(err=f"collect: {ex}")
     if r.get("status") == "disabled":
         return _redir_sites(err="web search is off (turn it on first)")
-    return _redir_sites(msg=f"collected {r.get('new', 0)} new")
+    msg = f"collected {r.get('new', 0)} new"
+    if r.get("too_old"):
+        msg += f", skipped {r['too_old']} older than the age limit"
+    return _redir_sites(msg=msg)
 
 @router.post("/sites/wipe")
 def sites_wipe(request: Request):
@@ -89,6 +95,15 @@ def sites_collect_mtender(request: Request):
     if r.get("status") == "error":
         return _redir_sites(err=f"mtender: {r.get('error')}")
     return _redir_sites(msg=f"MTender: {r.get('new', 0)} new of {r.get('fetched', 0)} fetched")
+
+
+@router.post("/sites/dedupe-mtender")
+def sites_dedupe_mtender(request: Request):
+    if request.state.readonly:
+        return _redir_sites(err="read-only mode")
+    from workflows.analysis import dedupe_mtender
+    n = dedupe_mtender(request.state.conn)
+    return _redir_sites(msg=f"MTender dedupe: merged {n} duplicate stage-copy tender(s)")
 
 @router.post("/sites/engine-toggle")
 def sites_engine_toggle(request: Request):

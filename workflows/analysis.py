@@ -82,12 +82,12 @@ def run_suppliers(store, conn, limit=None):
                                     next_status="sourced")
 
 
-def run_all(store, conn):
+def run_all(store, conn, limit=None):
     return {
-        "triage": run_triage(store, conn),
-        "extract": run_extract(store, conn),
-        "applicability": run_applicability(store, conn),
-        "suppliers": run_suppliers(store, conn),
+        "triage": run_triage(store, conn, limit=limit),
+        "extract": run_extract(store, conn, limit=limit),
+        "applicability": run_applicability(store, conn, limit=limit),
+        "suppliers": run_suppliers(store, conn, limit=limit),
     }
 
 
@@ -117,6 +117,104 @@ def _purge_tender_ids(conn, ids):
     for tbl in ("verdicts", "extractions", "verifications", "suppliers"):
         conn.execute(f"DELETE FROM {tbl} WHERE tender_id IN ({qs})", ids)
     conn.execute(f"DELETE FROM tenders WHERE id IN ({qs})", ids)
+
+
+def dedupe_mtender(conn):
+    import json as _json
+    from workflows.collectors.mtender import base_ocid
+    rows = conn.execute(
+        "SELECT id, external_id, normalized_json, status FROM tenders "
+        "WHERE source='mtender'").fetchall()
+    groups = {}
+    for r in rows:
+        groups.setdefault(base_ocid(r["external_id"]), []).append(r)
+
+    def richness(r):
+        try:
+            nj = _json.loads(r["normalized_json"] or "{}")
+        except Exception:
+            nj = {}
+        score = (1 if nj.get("title") else 0) + (1 if nj.get("value_amount") else 0)
+        return (score, 1 if r["status"] not in ("new", "failed") else 0, r["id"])
+
+    removed = 0
+    for base, grp in groups.items():
+        if len(grp) < 2:
+            continue
+        grp.sort(key=richness, reverse=True)
+        keeper, dupes = grp[0], [r["id"] for r in grp[1:]]
+        _purge_tender_ids(conn, dupes)
+        conn.execute("UPDATE tenders SET external_id=? WHERE id=?", (base, keeper["id"]))
+        removed += len(dupes)
+    conn.commit()
+    return removed
+
+
+_STAGE_ORDER = ["triage", "extract", "applicability", "suppliers"]
+_STAGE_PREV = {"triage": "new", "extract": "triaged",
+               "applicability": "extracted", "suppliers": "analyzed"}
+_STAGE_FORWARD = {
+    "triage": ("triaged", "extracted", "analyzed", "sourced", "failed"),
+    "extract": ("extracted", "analyzed", "sourced"),
+    "applicability": ("analyzed", "sourced"),
+    "suppliers": ("sourced",),
+}
+
+
+def _delete_stage_data(conn, stage):
+    if stage == "triage":
+        conn.execute("DELETE FROM verdicts WHERE stage_name='triage'")
+        conn.execute("DELETE FROM verifications WHERE stage='triage'")
+    elif stage == "extract":
+        conn.execute("DELETE FROM extractions")
+        conn.execute("DELETE FROM verifications WHERE stage='extract'")
+    elif stage == "applicability":
+        conn.execute("DELETE FROM verdicts WHERE stage_name='applicability'")
+        conn.execute("DELETE FROM verifications WHERE stage IN ('applicability','applicability_verify')")
+    elif stage == "suppliers":
+        conn.execute("DELETE FROM suppliers")
+
+
+def clear_stage(conn, stage):
+    if stage not in _STAGE_ORDER:
+        return 0
+    idx = _STAGE_ORDER.index(stage)
+    for st in _STAGE_ORDER[idx:]:
+        _delete_stage_data(conn, st)
+    forward = _STAGE_FORWARD[stage]
+    prev = _STAGE_PREV[stage]
+    ph = ",".join("?" * len(forward))
+    n = conn.execute(f"SELECT COUNT(*) FROM tenders WHERE status IN ({ph})",
+                     forward).fetchone()[0]
+    conn.execute(f"UPDATE tenders SET status=?, updated_at=? WHERE status IN ({ph})",
+                 (prev, time.time(), *forward))
+    conn.commit()
+    return n
+
+
+def requeue_failed(conn):
+    rows = conn.execute("SELECT id FROM tenders WHERE status='failed'").fetchall()
+    n = 0
+    for r in rows:
+        has_triage = conn.execute(
+            "SELECT 1 FROM verdicts WHERE tender_id=? AND stage_name='triage'",
+            (r["id"],)).fetchone()
+        conn.execute("UPDATE tenders SET status=?, updated_at=? WHERE id=?",
+                     ("triaged" if has_triage else "new", time.time(), r["id"]))
+        n += 1
+    conn.commit()
+    return n
+
+
+def reset_analysis(conn):
+    n = conn.execute(
+        "SELECT COUNT(*) FROM tenders WHERE status != 'new'").fetchone()[0]
+    for tbl in ("verdicts", "extractions", "verifications", "suppliers"):
+        conn.execute(f"DELETE FROM {tbl}")
+    conn.execute("UPDATE tenders SET status='new', updated_at=? WHERE status != 'new'",
+                 (time.time(),))
+    conn.commit()
+    return n
 
 
 def wipe_collected(conn, source="genericweb", forget=False):

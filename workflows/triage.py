@@ -8,8 +8,7 @@ from engine.registry import register
 
 
 def _text(tender):
-    parts = [tender.get("title") or "", tender.get("description") or "",
-             tender.get("buyer") or ""]
+    parts = [tender.get("title") or "", tender.get("description") or ""]
     return " ".join(parts).lower()
 
 
@@ -72,9 +71,9 @@ def score_tender(tender, config):
     return total, r_cpv + r_kw + r_val
 
 
-def bucket_for(score, config):
+def bucket_for(score, config, has_keyword=True):
     th = config.get("triage.bucket_thresholds", {"relevant": 3, "gray": 0.5})
-    if score >= th.get("relevant", 3):
+    if score >= th.get("relevant", 3) and has_keyword:
         return "relevant"
     if score >= th.get("gray", 0.5):
         return "gray"
@@ -101,10 +100,40 @@ class TriageStage(Stage):
     def run(self, ctx: StageContext) -> StageResult:
         tender = ctx.payload.get("tender") or {}
         score, reasons = score_tender(tender, ctx.config)
-        bucket = bucket_for(score, ctx.config)
+        has_keyword = any(r.get("type") == "keyword" and (r.get("w") or 0) > 0
+                          for r in reasons)
+        bucket = bucket_for(score, ctx.config, has_keyword)
         tender_id = ctx.payload.get("tender_id") or ctx.tender_id
         if tender_id is not None:
             _write_verdict(ctx.db, int(tender_id), bucket, score, reasons)
+            from workflows.trace import log_steps
+            kw = [r for r in reasons if r.get("type") == "keyword"]
+            cpv = [r for r in reasons if r.get("type") == "cpv"]
+            val = [r for r in reasons if r.get("type") == "value"]
+            th = ctx.config.get("triage.bucket_thresholds", {"relevant": 3, "gray": 0.5})
+            steps = [
+                ("Scored text (title + description; buyer excluded)",
+                 (_text(tender)[:300] or "(empty)")),
+                ("Keyword matches",
+                 ", ".join(f"{r['key']} {r['w']:+g}" for r in kw) if kw else "none"),
+                ("CPV matches",
+                 ", ".join(f"{r['key']} {r['w']:+g}" for r in cpv) if cpv else "none"),
+            ]
+            if val:
+                steps.append(("Value band",
+                              ", ".join(f"{r.get('key', 'value')} {r['w']:+g}" for r in val)))
+            steps.append(("Total score", f"{score:g}"))
+            th_rel = th.get("relevant", 3)
+            if score >= th_rel and not has_keyword:
+                steps.append(("Relevance rule",
+                              "score reaches relevant on CPV/value alone but NO subject keyword "
+                              "matched → capped at 'gray' (CPV codes are broad; a title keyword is "
+                              "required to be 'relevant')"))
+            steps.append(("Bucket decision",
+                          f"{score:g} vs relevant ≥ {th.get('relevant', 3)}, "
+                          f"gray ≥ {th.get('gray', 0.5)}"
+                          + ("" if has_keyword else ", keyword=none") + f" → {bucket}"))
+            log_steps(ctx.db, int(tender_id), "triage", steps)
         return StageResult(payload={**ctx.payload,
                                     "triage": {"bucket": bucket, "score": score,
                                                "reasons": reasons}})

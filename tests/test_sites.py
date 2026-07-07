@@ -174,14 +174,14 @@ def test_sites_web_add_with_batch_and_login(tmp_path, monkeypatch):
     conn.close()
     c = TestClient(create_app(p))
     c.post("/sites/add", data={"kind": "tenders", "label": "Portal",
-                               "url": "https://a.md/tenders", "step_percent": "15",
+                               "url": "https://a.md/tenders", "batch_size": "30",
                                "login": "user1", "password": "secret"},
            follow_redirects=False)
     conn2 = db.connect(p)
     s2 = ConfigStore(conn2)
     s2.reload()
     site = s2.get("sites.tenders")[0]
-    assert site["step_percent"] == 15 and site["url"] == "https://a.md/tenders"
+    assert site["batch_size"] == 30 and site["url"] == "https://a.md/tenders"
     auth = conn2.execute("SELECT auth_json FROM crawl_state WHERE site_id=?",
                          (site["id"],)).fetchone()
     assert json.loads(auth["auth_json"])["user"] == "user1"
@@ -202,12 +202,12 @@ def test_sites_web_settings_and_reset(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
     c = TestClient(create_app(p))
-    c.post("/sites/settings", data={"id": "s1", "step_percent": "33"}, follow_redirects=False)
+    c.post("/sites/settings", data={"id": "s1", "batch_size": "35"}, follow_redirects=False)
     c.post("/sites/reset-cursor", data={"id": "s1"}, follow_redirects=False)
     conn2 = db.connect(p)
     s2 = ConfigStore(conn2)
     s2.reload()
-    assert s2.get("sites.tenders")[0]["step_percent"] == 33
+    assert s2.get("sites.tenders")[0]["batch_size"] == 35
     cur = conn2.execute("SELECT next_url FROM crawl_state WHERE site_id='s1'").fetchone()
     assert cur["next_url"] is None
     conn2.close()
@@ -250,13 +250,11 @@ def _fake_inf(g, store, text, url, sc):
     return [{"title": f"P{n}", "url": f"https://a.md/t/{n}"}], f"https://a.md/list?page={n + 1}", None
 
 
-def test_percent_step_targets_estimate(tmp_path, monkeypatch):
+def test_batch_size_targets_count(tmp_path, monkeypatch):
     conn, store = fresh(tmp_path)
     store.set("sources.genericweb", {"enabled": True, "max_pages_per_run": 200})
     store.set("sites.tenders", [{"id": "s1", "url": "https://a.md/list?page=1",
-                                 "enabled": True, "step_percent": 5}])
-    conn.execute("INSERT INTO crawl_state(site_id, total_estimate) VALUES('s1', 1000)")
-    conn.commit()
+                                 "enabled": True, "batch_size": 50}])
     monkeypatch.setattr(gw, "get_text", lambda url, timeout=30, headers=None: "x")
     monkeypatch.setattr(gw, "_extract", _fake_inf)
     r = run_collector("genericweb", store, conn, params={"mode": "backfill"})
@@ -483,3 +481,53 @@ def test_max_age_filters_old_tenders(tmp_path, monkeypatch):
     titles = [_json.loads(row["normalized_json"])["title"]
               for row in conn.execute("SELECT normalized_json FROM tenders").fetchall()]
     assert titles == ["New"]
+
+
+def test_age_boundary_note(tmp_path, monkeypatch):
+    import datetime as _dt
+    conn, store = fresh(tmp_path)
+    store.set("sources.genericweb", {"enabled": True, "fallback_batch": 100})
+    store.set("sites.tenders", [{"id": "s1", "url": "https://a.md/list?page=1",
+                                 "enabled": True, "batch_size": 100}])
+    store.set("collect.max_age_days", 90)
+    recent = _dt.date.today().isoformat()
+    kept = (_dt.date.today() - _dt.timedelta(days=40)).isoformat()
+
+    def fake(g, st, text, url, sc):
+        import re
+        m = re.search(r"page=(\d+)", url)
+        n = int(m.group(1)) if m else 1
+        if n > 1:
+            return [], None, None
+        return ([{"title": "Fresh", "url": "u1", "date": recent},
+                 {"title": "Edge", "url": "u2", "date": kept},
+                 {"title": "Old", "url": "u3", "date": "2020-01-01"}],
+                "https://a.md/list?page=2", None)
+    monkeypatch.setattr(gw, "get_text", lambda url, timeout=30, headers=None: "x")
+    monkeypatch.setattr(gw, "_extract", fake)
+    r = run_collector("genericweb", store, conn, params={"mode": "backfill"})
+    assert r["new"] == 2 and r["too_old"] == 1
+    note = conn.execute("SELECT note FROM crawl_state WHERE site_id='s1'").fetchone()["note"]
+    assert "reached age limit" in note and kept in note
+
+
+def test_tender_detail_survives_bad_extraction(tmp_path, monkeypatch):
+    import json as _json
+    import time as _time
+    from fastapi.testclient import TestClient
+    from web.server import create_app
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    p = str(tmp_path / "t.db")
+    conn, store = fresh(Path(tmp_path))
+    now = _time.time()
+    conn.execute("INSERT INTO tenders(source,external_id,content_hash,normalized_json,"
+                 "status,created_at,updated_at) VALUES('mtender','z1','h',?,'extracted',?,?)",
+                 (_json.dumps({"title": "T"}), now, now))
+    tid = conn.execute("SELECT id FROM tenders WHERE external_id='z1'").fetchone()["id"]
+    conn.execute("INSERT INTO extractions(tender_id,fields_json,model,method,cost,created_at) "
+                 "VALUES(?,?,?,?,?,?)", (tid, _json.dumps("raw non-json text"), "m", "llm", 0, now))
+    conn.commit()
+    conn.close()
+    c = TestClient(create_app(p))
+    r = c.get(f"/tender?id={tid}", follow_redirects=False)
+    assert r.status_code == 200

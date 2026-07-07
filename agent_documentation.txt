@@ -84,7 +84,10 @@ COMPONENT MAP
     Purpose: schema + migrations. Add a table/column here; it auto-applies on next boot.
     Files: engine/db.py
     Key tables for collection: crawl_state(site_id PK, next_url, auth_json, last_run_at, total_collected,
-    exhausted, total_estimate, note); dismissed_tenders(external_id PK, source, reason, dismissed_at).
+    exhausted, total_estimate, note, detected_count); dismissed_tenders(external_id PK, source, reason,
+    dismissed_at). Analysis: verdicts(stage_name triage|applicability, verdict, score, reason,...), extractions,
+    suppliers, verifications(stage,...), stage_runs (LLM call metadata per tender+stage), stage_events(tender_id,
+    stage,seq,label,detail,created_at = the per-tender STEP TRACE, see [10]).
     SEND: engine/db.py
 
 [4] COLLECTOR FRAMEWORK + AGE FILTER (filtration)
@@ -160,25 +163,58 @@ COMPONENT MAP
 [9] MTENDER API COLLECTOR (official OCDS source)
     Purpose: reliable full MTender via public.mtender.gov.md OCDS API (mtender.md web is JS -> not scraped).
     Files: workflows/collectors/mtender.py
-    Config sources.mtender: {enabled,list_url,record_url_template,timeout,page_limit,max_records_per_run,
-    backfill_days}. normalize_record sets 'deadline','enquiry_deadline','date','published'(=release date).
+    Config sources.mtender: {enabled,list_url,record_url_template,portal_url_template,timeout,page_limit,
+    max_records_per_run,backfill_days}. normalize_record sets: title, description, buyer, value_amount/currency,
+    cpv (list of {id,scheme,description}), main_category, procurement_method, documents, and dates
+    'deadline'(=tenderPeriod.endDate = data depunerii), 'enquiry_deadline', 'publication_date'(=datePublished or
+    release date), 'date'. DEDUP: base_ocid(ocid) strips stage suffixes (ocds-<p>-<CC>-<digits>); the collector
+    keys external_id on the base so planning/tender/award stage-copies of one process collapse to one tender;
+    analysis.dedupe_mtender(conn) merges already-stored duplicates (button "Dedupe MTender" on /sites).
     SEND: workflows/collectors/mtender.py (+ config/defaults/30_sources.json)
 
 [10] ANALYSIS PIPELINE (triage -> extract -> applicability -> suppliers -> verify)
-    Purpose: turn collected "new" tenders into analyzed/sourced ones.
+    Purpose: turn collected "new" tenders into analyzed/sourced ones. Status chain:
+    new -> triaged -> extracted -> analyzed -> sourced (failed = a stage errored).
     Files: workflows/triage.py, workflows/extract.py, workflows/applicability.py, workflows/suppliers.py,
-    workflows/verify.py ; engine/orchestrator.py (process_stored_tenders(pipeline,store,conn,statuses,limit);
-    process_selected_tenders(pipeline,store,conn,tender_ids,next_status)).
-    On-demand runner + funnel: workflows/analysis.py (funnel_counts(conn); run_triage/run_extract/
-    run_applicability/run_suppliers; run_all; clear_irrelevant(conn,reject_verdicts); wipe_collected(conn,source,
-    forget)). KNOWN TODO: verify triage->extract->applicability works end-to-end on the ~1520 MTender tenders.
-    SEND: the specific stage file(s) + workflows/analysis.py + engine/orchestrator.py
+    workflows/verify.py ; engine/orchestrator.py (process_stored_tenders(...,limit); process_selected_tenders).
+    On-demand runner + funnel: workflows/analysis.py.
+    STEP TRACES: each stage's produce_* builds a `steps` list persisted via workflows/trace.py:log_steps(conn,
+    tender_id,stage,steps) into the stage_events table (deleted+rewritten per run). Extract/applicability steps
+    include the FULL model I/O: "Model input · system prompt", "Model input · content sent", "Model output ·
+    raw response" (truncated ~3k/6k/8k). Rendered on the stage tabs (see [13]).
+    TRIAGE RULES (workflows/triage.py): _text() scores TITLE + DESCRIPTION only (buyer name EXCLUDED — a cyber/
+    police buyer must not make an AC-repair tender relevant). bucket_for(score,config,has_keyword): a tender is
+    "relevant" only if it reaches the threshold AND has >=1 positive KEYWORD match; CPV/value alone caps at "gray"
+    (CPV prefixes are broad). Keyword/CPV/value weights live in triage.* config (edit via User Settings).
+    EXTRACT (workflows/extract.py): no documents -> _fields_from_metadata (obiect from title+CPV, valoare from
+    value) with method="metadata"; also pulls data_depunerii (submission deadline stated in docs) as the
+    AI-estimated deadline. source_text capped at extract.max_input_chars (200k) to avoid 400 "prompt too long".
+    _store_extraction always stores a dict ({"raw":...} for non-dict) so the detail page never crashes.
+    APPLICABILITY: _store_verdict never writes NULL (unknown fallback). analysis.py helpers:
+    funnel_counts; run_triage/run_extract/run_applicability/run_suppliers/run_all (all take limit=analyze.
+    batch_size, default 50, set on the Analyze page); clear_irrelevant; wipe_collected; reset_analysis;
+    requeue_failed; dedupe_mtender(conn) (merge MTender stage-copies by base ocid); clear_stage(conn,stage)
+    (per-stage CASCADE clear: deletes that stage + all downstream stage data and rolls tender status back one
+    step; wired to the ✕ clear buttons under each stage on /analyze).
+    SEND: the specific stage file(s) + workflows/analysis.py + workflows/trace.py + engine/orchestrator.py
+
+[10b] LLM GATEWAY (engine/llm.py)
+    complete(stage,system,messages,max_tokens,prefill): picks model from llm.models[stage]; guards empty content;
+    on a model-related API error, auto-retries once with llm.models["default"] (so a stale model string like a
+    retired sonnet won't break a whole stage). Current default models live in config/defaults/60_llm.json
+    (haiku-4-5 default/extract/suppliers; sonnet-5 applicability). If a stage 400s, check the model string.
 
 [11] WEB — CORE
     Purpose: FastAPI app, auth/context, shared HTML render, styles.
-    Files: web/server.py (create_app; include_router digest/config/sites/analyze; /healthz /login);
-    web/context.py (_open,_check_auth,_schedule_restart,add_context_middleware; request.state.conn/store/readonly);
-    web/render.py (_e,_ts,_table,_layout,_login,NAV,_control,...); web/styles.py (CSS dark theme; edit for look).
+    Files: web/server.py (create_app; includes routers digest/config/sites/analyze/settings/stage/results;
+    /healthz /login); web/context.py (request.state.conn/store/readonly);
+    web/render.py (_e,_ts,_table,_layout,_login,_loose,_vclass,_help,NAV,source_url,...);
+    web/styles.py (CSS dark theme).
+    NAV (render.py) — current tabs: Digest, Results, Tenders, Triage, Extract, Applicability, Suppliers,
+    Analyze, Sites, User Settings, Config. REMOVED (were dev noise / folded into per-tender stage logs):
+    Verifications, Coverage, Runs, Stages, Audit.
+    source_url(source, external_id, portal): builds the MTender portal link from an ocds- external_id
+    (default portal template sources.mtender.portal_url_template = https://mtender.gov.md/tenders/{ocid}).
     SEND: web/server.py, web/context.py, web/render.py, web/styles.py (only those you touch)
 
 [12] WEB — SITES UI (split into small modules, ONE shared router)
@@ -208,9 +244,25 @@ COMPONENT MAP
     table shows "engine: X" under the progress bar when a site has a non-default engine set.
 
 [13] WEB — OTHER PAGES
-    Files: web/routes_digest.py (/, /tender, /tenders, /triage, /applicability, /suppliers, /verifications,
-    /coverage, /runs, /stages, /audit); web/routes_config.py (/config editing + /admin/restart);
-    web/routes_analyze.py (/analyze funnel page + run buttons -> workflows/analysis.py).
+    web/routes_digest.py -> /, /tender (full cross-stage detail: 3 separate dates published/deadline/enquiry
+      with "—" when absent + AI-estimated deadline from extraction.data_depunerii; a dedicated `source` field
+      linking to the portal always; documents or a "no documents" note), /tenders.
+    web/routes_stage.py -> /stage/{triage|extract|applicability|suppliers}: ONE parametric stage tab. Top =
+      "how it works" explanation. Middle = search-by-ID + a tender list for that stage. Click a row (or search
+      an ID) -> that tender's Result + STEPS (the step trace incl. full model input/output, long blocks
+      collapsible) + Run log (stage_runs metadata) + Verification. Header has the portal source link.
+    web/routes_results.py -> /results: the clean end-user shortlist (applicability can/partial, or triage
+      relevant not-yet-analyzed; junk/rejected excluded). Cards show title, verdict badge, buyer/value/3 dates
+      (+AI-estimated), CPV, margin, reasoning, documents, dedicated Source link. Sort bar: by Deadline (default,
+      soonest first, undated last; falls back to AI-estimated), Published (newest first), Enquiry, or CPV (groups
+      cards into per-CPV-code blocks like other tender sites). Search by ID.
+    web/routes_settings.py -> /user-settings: friendly per-option form (label + "?" tooltip + inline field, NO
+      JSON) for the company profile (capabilities.profile split into fields), search keywords (editable
+      word/weight rows + chip overview), and relevance/search tuning (bucket thresholds, value band,
+      collect.max_age_days, analyze.batch_size). Separate from the raw /config editor.
+    web/routes_config.py -> /config (raw config editing + /admin/restart).
+    web/routes_analyze.py -> /analyze funnel + run buttons (per-stage run + ✕ clear cascade under each) + Retry
+      failed + Clear rejected + "per run" batch input.
     SEND: the one page file + web/render.py if shared render changes.
 
 [14] DOCUMENTS
