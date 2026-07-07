@@ -11,19 +11,28 @@ from web.styles import CSS
 
 NAV = [
     ("/", "Digest"),
+    ("/results", "Results"),
     ("/tenders", "Tenders"),
-    ("/triage", "Triage"),
-    ("/applicability", "Applicability"),
-    ("/suppliers", "Suppliers"),
-    ("/verifications", "Verifications"),
-    ("/coverage", "Coverage"),
-    ("/runs", "Runs"),
-    ("/stages", "Stages"),
-    ("/audit", "Audit"),
+    ("/stage/triage", "Triage"),
+    ("/stage/extract", "Extract"),
+    ("/stage/applicability", "Applicability"),
+    ("/stage/suppliers", "Suppliers"),
     ("/analyze", "Analyze"),
     ("/sites", "Sites"),
+    ("/user-settings", "User Settings"),
     ("/config", "Config"),
 ]
+
+
+def source_url(source, external_id, portal=None):
+    ext = str(external_id or "")
+    if source == "mtender" and ext.startswith("ocds-"):
+        tpl = portal or "https://mtender.gov.md/tenders/{ocid}"
+        try:
+            return tpl.format(ocid=ext)
+        except Exception:
+            return None
+    return None
 
 
 def _e(v):

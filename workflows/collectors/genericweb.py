@@ -6,10 +6,9 @@ import hashlib
 import html
 import json
 import logging
-import math
 import re
 import time
-from urllib.parse import urljoin
+from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from engine.collectors import (CollectContext, CollectedItem, CollectResult,
                                Collector, register_collector)
@@ -33,9 +32,11 @@ DEFAULT_EXTRACT_PROMPT = (
     "next_page_url = the absolute URL of the pagination link to the NEXT / older page "
     "(labels like next, '>', '\u203a', 'urmatorul', 'weiter', or page N+1), or null if none. "
     "total_estimate = the total count of announcements on the whole section if the page shows it "
-    "(e.g. 'Showing 1-20 of 1234', '1234 results', '1234 rezultate' -> 1234), else null. "
-    "last_page = the highest page number visible in the pagination (e.g. links '1 2 3 ... 250' or a "
-    "'last' link to page 250 -> 250), else null. "
+    "anywhere, in any language (e.g. 'Showing 1-20 of 1234', '1234 results', '1234 rezultate', "
+    "'1234 anunturi', '1234 licitatii', 'din 1234', 'total 1234', 'Gasite 1234', "
+    "'Найдено 1234', 'Всего 1234', '1-20 din 1234' -> 1234), else null. "
+    "last_page = the highest page number visible in the pagination (e.g. links '1 2 3 ... 250', a "
+    "'last'/'ultima'/'Последняя' link to page 250, or '?page=250' in a last-page link -> 250), else null. "
     "date = the publication/posting date of the tender if shown (prefer ISO YYYY-MM-DD; "
     "otherwise copy the date text as-is), else null. "
     "Use null for any missing field. If there are no announcements, return an empty tenders list."
@@ -135,10 +136,60 @@ def _parse_int(value):
     return int(s) if s else None
 
 
+_TRACK_PARAMS = {"fbclid", "gclid", "sid", "sessionid", "phpsessid", "jsessionid"}
+
+
+def _canon_url(u):
+    s = str(u or "").strip()
+    try:
+        p = urlsplit(s)
+    except Exception:
+        return s.lower()
+    if not p.scheme and not p.netloc:
+        return s.lower()
+    q = [(k, v) for k, v in parse_qsl(p.query, keep_blank_values=False)
+         if not k.lower().startswith("utm_") and k.lower() not in _TRACK_PARAMS]
+    q.sort()
+    path = p.path.rstrip("/") or "/"
+    return urlunsplit((p.scheme.lower(), p.netloc.lower(), path, urlencode(q), "")).lower()
+
+
 def _external_id(site_id, item):
-    seed = (item.get("url") or item.get("ref") or item.get("title") or "")[:300]
-    h = hashlib.sha1(seed.encode("utf-8")).hexdigest()[:16]
+    url = item.get("url")
+    if url:
+        seed = _canon_url(url)
+    elif item.get("ref"):
+        seed = re.sub(r"\s+", "", str(item["ref"]).lower())
+    else:
+        seed = re.sub(r"\s+", " ", str(item.get("title") or "").strip().lower())
+    h = hashlib.sha1(seed[:300].encode("utf-8")).hexdigest()[:16]
     return f"{site_id}:{h}"
+
+
+def _tender_date(date_str):
+    if not date_str:
+        return None
+    s = str(date_str).strip()
+    m = re.search(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", s)
+    if m:
+        try:
+            return dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        except ValueError:
+            pass
+    m = re.search(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", s)
+    if m:
+        try:
+            return dt.date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
+        except ValueError:
+            pass
+    return None
+
+
+def _tender_age_days(date_str):
+    d = _tender_date(date_str)
+    if d is None:
+        return None
+    return (dt.datetime.now(dt.timezone.utc).date() - d).days
 
 
 def _normalize_item(site, item):
@@ -176,11 +227,21 @@ def _normalize_item(site, item):
     }
 
 
-def _increment_page(url):
-    m = re.search(r"([?&]page=)(\d+)", url, flags=re.I)
-    if not m:
-        return None
-    return url[:m.start(2)] + str(int(m.group(2)) + 1) + url[m.end(2):]
+_PAGE_PARAM_RE = re.compile(r"([?&](?:page|pagina|pg|p)=)(\d+)", re.I)
+_PAGE_PATH_RE = re.compile(r"(/(?:page|pagina)/)(\d+)", re.I)
+_OFFSET_PARAM_RE = re.compile(r"([?&](?:offset|start|from)=)(\d+)", re.I)
+
+
+def _increment_page(url, per_page=None):
+    for rx in (_PAGE_PARAM_RE, _PAGE_PATH_RE):
+        m = rx.search(url)
+        if m:
+            return url[:m.start(2)] + str(int(m.group(2)) + 1) + url[m.end(2):]
+    if per_page and per_page > 0:
+        m = _OFFSET_PARAM_RE.search(url)
+        if m:
+            return url[:m.start(2)] + str(int(m.group(2)) + per_page) + url[m.end(2):]
+    return None
 
 
 def _auth_headers(auth):
@@ -233,6 +294,17 @@ def _save_estimate(conn, site_id, estimate):
         "ON CONFLICT(site_id) DO UPDATE SET total_estimate=excluded.total_estimate, "
         "last_run_at=excluded.last_run_at",
         (site_id, int(estimate), time.time()))
+    conn.commit()
+
+
+def _save_detected(conn, site_id, count):
+    if count is None:
+        return
+    conn.execute(
+        "INSERT INTO crawl_state(site_id, detected_count, last_run_at) VALUES(?,?,?) "
+        "ON CONFLICT(site_id) DO UPDATE SET detected_count=excluded.detected_count, "
+        "last_run_at=excluded.last_run_at",
+        (site_id, int(count), time.time()))
     conn.commit()
 
 
@@ -311,10 +383,15 @@ def _extract(gw, store, page_text, current_url, sc):
     return tenders, nxt, est
 
 
-def _target_count(step_percent, estimate, fallback):
-    if estimate and estimate > 0:
-        return max(1, math.ceil(step_percent / 100.0 * estimate))
-    return fallback
+def _batch_target(site, fallback):
+    n = site.get("batch_size")
+    if n is None:
+        n = fallback
+    try:
+        n = int(n)
+    except (TypeError, ValueError):
+        n = fallback
+    return max(1, n)
 
 
 @register_collector("genericweb")
@@ -333,13 +410,15 @@ class GenericWebCollector(Collector):
         max_chars = int(sc.get("max_input_chars", 120000))
         hard_cap = int(sc.get("max_pages_per_run", 60))
         inc_cap = int(sc.get("incremental_max_pages", 5))
-        fallback = int(sc.get("fallback_batch", 25))
+        fallback = int(sc.get("fallback_batch", 30))
+        max_age = _parse_int(store.get("collect.max_age_days"))
         sites = store.get("sites.tenders", []) or []
         gw = LLMGateway(store, conn)
         log.info("collect start mode=%s sites=%d", mode, len(sites))
 
         items = []
         fetched = 0
+        too_old = 0
         for site in sites:
             if not site.get("enabled", True) or not site.get("url"):
                 continue
@@ -366,8 +445,7 @@ class GenericWebCollector(Collector):
                          site.get("label"), est, len(text), len(tenders))
                 continue
 
-            step_percent = max(1, min(100, int(site.get("step_percent", 10) or 10)))
-            target = _target_count(step_percent, state["estimate"], fallback)
+            target = _batch_target(site, fallback)
             page_cap = inc_cap if mode == "incremental" else hard_cap
             current = (state["next_url"] or site["url"]) if mode == "backfill" else site["url"]
 
@@ -378,6 +456,8 @@ class GenericWebCollector(Collector):
             resume = current
             first_est = None
             first_diag = None
+            site_too_old = 0
+            oldest_kept = None
             while current and current not in seen_pages and pages < page_cap:
                 seen_pages.add(current)
                 pages += 1
@@ -391,38 +471,53 @@ class GenericWebCollector(Collector):
                 tenders, next_url, est = _extract(gw, store, text, current, sc)
                 if first_est is None and est is not None:
                     first_est = est
-                    if not state["estimate"]:
-                        target = _target_count(step_percent, est, fallback)
                 if first_diag is None:
                     first_diag = _diag_note(text, len(tenders), est)
                 page_new = 0
                 for t in tenders:
                     if not isinstance(t, dict) or not t.get("title"):
                         continue
-                    ext = _external_id(site_id, t)
-                    if ext in seen_ext:
+                    if max_age and max_age > 0:
+                        age = _tender_age_days(t.get("date"))
+                        if age is not None and age > max_age:
+                            too_old += 1
+                            site_too_old += 1
+                            continue
+                    try:
+                        ext = _external_id(site_id, t)
+                        if ext in seen_ext:
+                            continue
+                        seen_ext.add(ext)
+                        d = _tender_date(t.get("date"))
+                        if d is not None and (oldest_kept is None or d < oldest_kept):
+                            oldest_kept = d
+                        items.append(CollectedItem(
+                            external_id=ext, raw={"site": site, "item": t},
+                            normalized=_normalize_item(site, t)))
+                        fetched += 1
+                        if not _exists(conn, ext):
+                            new_in_batch += 1
+                            page_new += 1
+                    except Exception as exc:
+                        log.warning("skipped malformed tender site=%s: %s",
+                                    site.get("label"), exc)
                         continue
-                    seen_ext.add(ext)
-                    items.append(CollectedItem(
-                        external_id=ext, raw={"site": site, "item": t},
-                        normalized=_normalize_item(site, t)))
-                    fetched += 1
-                    if not _exists(conn, ext):
-                        new_in_batch += 1
-                        page_new += 1
                 log.info("site=%s page=%d url=%s tenders=%d new=%d next=%s",
                          site.get("label"), pages, current, len(tenders), page_new,
                          bool(next_url))
                 if not tenders:
                     resume = None
                     break
-                inc = _increment_page(current)
+                inc = _increment_page(current, len(tenders))
                 if inc:
                     next_url = inc
                 resume = next_url
                 if mode == "incremental" and page_new == 0:
                     break
                 if mode == "backfill" and new_in_batch >= target:
+                    break
+                if site_too_old > 0:
+                    resume = None
                     break
                 current = next_url
 
@@ -431,7 +526,13 @@ class GenericWebCollector(Collector):
             if mode == "backfill":
                 got = state["total"] + new_in_batch
                 est = first_est or state["estimate"]
-                if resume is None:
+                if site_too_old > 0:
+                    kept = oldest_kept.isoformat() if oldest_kept else "unknown"
+                    _save_state(conn, site_id, None, got, True)
+                    _save_note(conn, site_id,
+                               f"reached age limit ({max_age}d): last kept tender {kept}, "
+                               f"{site_too_old} older skipped — stopping (nothing newer past here).")
+                elif resume is None:
                     if est and got < int(est * 0.9):
                         _save_state(conn, site_id, None, got, False)
                         _save_note(conn, site_id,
@@ -458,5 +559,5 @@ class GenericWebCollector(Collector):
                          site.get("label"), new_in_batch, pages)
 
         cursor = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        log.info("collect done mode=%s: %d item(s)", mode, fetched)
-        return CollectResult(items=items, cursor=cursor, fetched=fetched)
+        log.info("collect done mode=%s: %d item(s), %d too old", mode, fetched, too_old)
+        return CollectResult(items=items, cursor=cursor, fetched=fetched, too_old=too_old)

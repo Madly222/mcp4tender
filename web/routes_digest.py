@@ -4,8 +4,8 @@ import json
 
 from fastapi import APIRouter, Request
 
-from workflows.supervisor import build_digest, check_coverage
-from web.render import _e, _layout, _loose, _table, _ts, _vclass
+from workflows.supervisor import build_digest
+from web.render import _e, _layout, _loose, _table, _ts, _vclass, source_url
 
 router = APIRouter()
 
@@ -52,25 +52,69 @@ def tender(request: Request, id: int):
     if not row:
         return _layout(request, "Tender", '<div class="card"><div class="empty">not found</div></div>')
     nj = _loose(row["normalized_json"])
+    if not isinstance(nj, dict):
+        nj = {}
     docs = nj.get("documents") or []
+    if not isinstance(docs, list):
+        docs = []
     doclist = ""
     for d in docs[:30]:
+        if not isinstance(d, dict):
+            continue
         t = _e(d.get("title") or d.get("documentType") or "doc")
         u = d.get("url")
         doclist += f'<div>{("<a href=" + chr(34) + _e(u) + chr(34) + " target=_blank>" + t + "</a>") if u else t} <span class=mut>[{_e(d.get("format"))}]</span></div>'
+    def _fmt_cpv(cpv):
+        if isinstance(cpv, list):
+            parts = []
+            for c in cpv:
+                if isinstance(c, dict):
+                    parts.append(" ".join(str(x) for x in (c.get("id"), c.get("description")) if x))
+                elif c:
+                    parts.append(str(c))
+            return " · ".join(p for p in parts if p)
+        return str(cpv or "")
+    ex_row = conn.execute("SELECT fields_json FROM extractions WHERE tender_id=?", (id,)).fetchone()
+    ef = _loose(ex_row["fields_json"]) if ex_row else {}
+    ef = ef if isinstance(ef, dict) else {}
+    est_deadline = ef.get("data_depunerii")
     kv = [
         ("title", _e(nj.get("title"))),
         ("buyer", _e(nj.get("buyer"))),
         ("value", f'{_e(nj.get("value_amount"))} {_e(nj.get("value_currency"))}'),
-        ("cpv", _e(nj.get("cpv"))),
-        ("method", _e(nj.get("method"))),
+        ("published (data publicării)", _e(nj.get("publication_date") or "—")),
+        ("submission deadline (data depunerii)", _e(nj.get("deadline") or "—")),
+        ("enquiry deadline (limită clarificări)", _e(nj.get("enquiry_deadline") or "—")),
+    ]
+    if est_deadline and not nj.get("deadline"):
+        kv.append(("est. deadline (from documents)",
+                   f'{_e(est_deadline)} <span class=mut>· AI-estimated</span>'))
+    portal = (request.state.store.get("sources.mtender", {}) or {}).get("portal_url_template")
+    surl = source_url(row["source"], row["external_id"], portal)
+    src_link = (f' <a href="{_e(surl)}" target=_blank>open on source portal ↗</a>' if surl else "")
+    kv += [
+        ("cpv", _e(_fmt_cpv(nj.get("cpv")))),
+        ("category", _e(nj.get("main_category") or "—")),
+        ("method", _e(nj.get("procurement_method") or nj.get("method") or "—")),
         ("status", _e(row["status"])),
+        ("source", (f'<a href="{_e(surl)}" target=_blank>open on source portal ↗</a>'
+                    if surl else "—")),
         ("external_id", f'<span class=mono>{_e(row["external_id"])}</span>'),
     ]
+    if nj.get("description") and nj.get("description") != nj.get("title"):
+        kv.insert(3, ("description", _e(str(nj["description"])[:600])))
     kvh = "".join(f'<div class=k>{k}</div><div>{v}</div>' for k, v in kv)
-    head = f'<div class="card"><div class="kv">{kvh}</div></div>'
+    head = f'<div class="card"><div class="kv">{kvh}</div>'
+    if surl:
+        head += (f'<p class="mut" style="font-size:12.5px;margin:10px 0 0">Found on: '
+                 f'<a href="{_e(surl)}" target=_blank>{_e(surl)}</a></p>')
+    head += '</div>'
     if doclist:
         head += f'<h2>Documents</h2><div class="card">{doclist}</div>'
+    else:
+        head += ('<div class="card mut" style="font-size:12.5px">No documents attached to this '
+                 'tender in the source. Small tenders often carry their spec inline (in the title '
+                 'and CPV) rather than as files.' + src_link + '</div>')
 
     ex = conn.execute(
         "SELECT fields_json, method, model, cost FROM extractions WHERE tender_id = ? "
@@ -78,9 +122,13 @@ def tender(request: Request, id: int):
     exh = ""
     if ex:
         f = _loose(ex["fields_json"])
+        if not isinstance(f, dict):
+            f = {}
         equip = f.get("echipamente") or []
+        if not isinstance(equip, list):
+            equip = []
         erows = [[_e(e.get("denumire")), _e(e.get("model")), _e(e.get("cantitate")),
-                  _e((e.get("specificatii") or "")[:80])] for e in equip]
+                  _e((e.get("specificatii") or "")[:80])] for e in equip if isinstance(e, dict)]
         exh = f'<h2>Extraction <span class=mut>({_e(ex["method"])} / {_e(ex["model"])})</span></h2>'
         exh += f'<div class="card"><div class=kv><div class=k>obiect</div><div>{_e(f.get("obiect"))}</div>'
         exh += f'<div class=k>termen</div><div>{_e(f.get("termen_livrare"))}</div>'
@@ -95,7 +143,11 @@ def tender(request: Request, id: int):
     aph = ""
     if ap:
         reason = _loose(ap["reason"])
+        if not isinstance(reason, dict):
+            reason = {}
         gaps = reason.get("gaps") or []
+        if not isinstance(gaps, list):
+            gaps = []
         req = reason.get("required_equipment") or reason.get("reason") or ""
         aph = (f'<h2>Applicability</h2><div class="card"><div class=row>'
                f'<span class="{_vclass(ap["verdict"])}" style="font-size:16px">{_e(ap["verdict"])}</span>'
@@ -148,122 +200,3 @@ def tenders(request: Request):
             f'<span class="{_vclass(r["status"])}">{_e(r["status"])}</span>',
             _ts(r["updated_at"])] for r in rows]
     return _layout(request, "Tenders", _table(["ID", "Source", "External", "Status", "Updated"], out))
-
-
-@router.get("/triage")
-def triage(request: Request):
-    rows = request.state.conn.execute(
-        "SELECT t.id, t.normalized_json, v.verdict, v.score, v.reason FROM tenders t "
-        "LEFT JOIN verdicts v ON v.tender_id = t.id AND v.stage_name = 'triage' "
-        "ORDER BY v.score DESC, t.id DESC LIMIT 200").fetchall()
-    out = []
-    for r in rows:
-        title = _e((_loose(r["normalized_json"]).get("title") or "")[:80])
-        out.append([f'<a href="/tender?id={r["id"]}">{r["id"]}</a>',
-                    f'<span class="{_vclass(r["verdict"])}">{_e(r["verdict"] or "-")}</span>',
-                    _e(r["score"] if r["score"] is not None else "-"), title])
-    return _layout(request, "Triage", _table(["ID", "Bucket", "Score", "Title"], out))
-
-
-@router.get("/applicability")
-def applicability(request: Request):
-    rows = request.state.conn.execute(
-        "SELECT t.id, t.normalized_json, v.verdict, v.score, v.confidence, v.reason "
-        "FROM tenders t JOIN verdicts v ON v.tender_id = t.id "
-        "AND v.stage_name = 'applicability' ORDER BY v.score DESC LIMIT 200").fetchall()
-    out = []
-    for r in rows:
-        title = _e((_loose(r["normalized_json"]).get("title") or "")[:60])
-        ngaps = len((_loose(r["reason"]).get("gaps") or []))
-        out.append([f'<a href="/tender?id={r["id"]}">{r["id"]}</a>',
-                    f'<span class="{_vclass(r["verdict"])}">{_e(r["verdict"] or "-")}</span>',
-                    _e(r["score"] if r["score"] is not None else "-"),
-                    _e(r["confidence"] if r["confidence"] is not None else "-"),
-                    _e(ngaps), title])
-    return _layout(request, "Applicability", _table(["ID", "Verdict", "Score", "Conf", "Gaps", "Title"], out))
-
-
-@router.get("/suppliers")
-def suppliers(request: Request):
-    rows = request.state.conn.execute(
-        "SELECT tender_id, total_cost, tender_value, currency, margin, matched_count, "
-        "unmatched_count, margin_partial FROM suppliers ORDER BY id DESC LIMIT 200").fetchall()
-    out = []
-    for r in rows:
-        margin = f"{r['margin'] * 100:.1f}%" if r["margin"] is not None else "-"
-        if r["margin"] is not None and r["margin_partial"]:
-            margin += "~"
-        out.append([f'<a href="/tender?id={r["tender_id"]}">{r["tender_id"]}</a>',
-                    f'{_e(r["total_cost"])} {_e(r["currency"])}',
-                    f'{_e(r["tender_value"])} {_e(r["currency"])}', _e(margin),
-                    _e(r["matched_count"]), _e(r["unmatched_count"])])
-    return _layout(request, "Suppliers", _table(
-        ["Tender", "Cost", "Valoare", "Margin", "Matched", "Unmatched"], out))
-
-
-@router.get("/verifications")
-def verifications(request: Request):
-    rows = request.state.conn.execute(
-        "SELECT tender_id, stage, status, issues_json, retries, needs_review, cost "
-        "FROM verifications ORDER BY id DESC LIMIT 200").fetchall()
-    out = []
-    for r in rows:
-        ij = _loose(r["issues_json"])
-        out.append([f'<a href="/tender?id={r["tender_id"]}">{r["tender_id"]}</a>',
-                    _e(r["stage"]),
-                    f'<span class="{_vclass(r["status"])}">{_e(r["status"] or "-")}</span>',
-                    _e(len(ij.get("missing", []) or [])), _e(len(ij.get("issues", []) or [])),
-                    _e(r["retries"]),
-                    '<span class="v-needs_review">YES</span>' if r["needs_review"] else ""])
-    return _layout(request, "Verifications", _table(
-        ["Tender", "Stage", "Status", "Missing", "Issues", "Retries", "Review"], out))
-
-
-@router.get("/coverage")
-def coverage(request: Request):
-    cov = check_coverage(request.state.conn, request.state.store)
-    if cov["warnings"]:
-        warn = '<div class="err">' + "<br>".join(_e(w) for w in cov["warnings"]) + "</div>"
-    else:
-        warn = '<div class="ok">ok - no collection warnings</div>'
-    out = [[_e(s["source"]), _e(s["age_hours"]), _e(s["last_new"]),
-            f'<span class="{_vclass(s["last_status"])}">{_e(s["last_status"])}</span>',
-            _e(s["avg_recent_new"])] for s in cov["sources"]]
-    body = warn + _table(["Source", "Age (h)", "Last new", "Status", "Avg recent"], out)
-    return _layout(request, "Coverage", body)
-
-
-@router.get("/runs")
-def runs(request: Request):
-    rows = request.state.conn.execute(
-        "SELECT run_id, pipeline, mode, status, started_at, finished_at "
-        "FROM pipeline_runs ORDER BY id DESC LIMIT 100").fetchall()
-    out = [[f'<span class=mono>{_e(r["run_id"][:12])}</span>', _e(r["pipeline"]),
-            _e(r["mode"]), f'<span class="{_vclass(r["status"])}">{_e(r["status"])}</span>',
-            _ts(r["started_at"]), _ts(r["finished_at"])] for r in rows]
-    return _layout(request, "Runs", _table(
-        ["Run", "Pipeline", "Mode", "Status", "Started", "Finished"], out))
-
-
-@router.get("/stages")
-def stages(request: Request):
-    rows = request.state.conn.execute(
-        "SELECT run_id, stage_name, status, tokens, cost, error, started_at "
-        "FROM stage_runs ORDER BY id DESC LIMIT 150").fetchall()
-    out = [[f'<span class=mono>{_e(r["run_id"][:12])}</span>', _e(r["stage_name"]),
-            f'<span class="{_vclass(r["status"])}">{_e(r["status"])}</span>',
-            _e(r["tokens"]), f'${_e(round(r["cost"] or 0, 4))}',
-            _e((r["error"] or "")[:50]), _ts(r["started_at"])] for r in rows]
-    return _layout(request, "Stages", _table(
-        ["Run", "Stage", "Status", "Tokens", "Cost", "Error", "At"], out))
-
-
-@router.get("/audit")
-def audit(request: Request):
-    rows = request.state.conn.execute(
-        "SELECT ts, actor, action, entity, detail_json FROM audit_log "
-        "ORDER BY id DESC LIMIT 200").fetchall()
-    out = [[_ts(r["ts"]), _e(r["actor"]), _e(r["action"]),
-            f'<span class=mono>{_e(r["entity"])}</span>',
-            f'<span class="mono mut">{_e((r["detail_json"] or "")[:80])}</span>'] for r in rows]
-    return _layout(request, "Audit", _table(["When", "Actor", "Action", "Entity", "Detail"], out))

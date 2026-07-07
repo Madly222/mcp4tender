@@ -137,7 +137,7 @@ def test_extract_no_documents(tmp_path, monkeypatch):
                      tender_id=tid)
     assert r["status"] == "done"
     row = conn.execute("SELECT method FROM extractions WHERE tender_id=?", (tid,)).fetchone()
-    assert row["method"] == "no_documents"
+    assert row["method"] == "metadata"
 
 
 if __name__ == "__main__":

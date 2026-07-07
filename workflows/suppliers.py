@@ -203,13 +203,20 @@ class SuppliersStage(Stage):
 
         requirements, valoare = _load_requirements(ctx.db, int(tender_id))
         tender_value, currency = _tender_value(tender, valoare)
+        from workflows.trace import log_steps
         if not requirements:
+            log_steps(ctx.db, int(tender_id), "suppliers", [
+                ("Load requirements", "no equipment items found in the extraction"),
+                ("Stop", "nothing to price — tender has no equipment requirements")])
             return StageResult(payload={**ctx.payload,
                                         "suppliers": {"status": "no_requirements"}})
 
         out = produce_supplier_matches(requirements, catalog, gw, ctx.config)
         if out["status"] != "ok":
             if tender_id is not None:
+                log_steps(ctx.db, int(tender_id), "suppliers", [
+                    ("Load requirements", f"{len(requirements)} item(s)"),
+                    ("Match to catalog", "model output could not be parsed (parse_error)")])
                 flag_parse_failure(ctx.db, int(tender_id), "suppliers", out["raw"])
             return StageResult(payload={**ctx.payload,
                                         "suppliers": {"status": "parse_error"}})
@@ -220,6 +227,20 @@ class SuppliersStage(Stage):
         if tender_id is not None:
             _store_suppliers(ctx.db, int(tender_id), summary, out["model"],
                              out["tokens"], out["cost"])
+            margin_txt = (f"{summary['margin']*100:.1f}%" if summary["margin"] is not None
+                          else "n/a (no value or currency)")
+            log_steps(ctx.db, int(tender_id), "suppliers", [
+                ("Load requirements",
+                 f"{len(requirements)} equipment item(s); tender value "
+                 f"{tender_value} {currency or '?'}"),
+                ("Match to catalog",
+                 f"{summary['matched_count']} matched, {summary['unmatched_count']} unmatched "
+                 f"(model {out['model']})"),
+                ("Compute cost",
+                 f"total {summary['total_cost']:.2f} {summary['currency'] or ''}"
+                 + (" · FX rate missing for some items" if summary.get("fx_incomplete") else "")),
+                ("Margin", margin_txt
+                 + (" (partial — unmatched items)" if summary.get("margin_partial") else ""))])
             if summary["unmatched_count"] > 0 or summary["fx_incomplete"]:
                 from workflows.verify import _store_verification
                 note = []

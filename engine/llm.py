@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 
 from .hashing import content_hash
+
+log = logging.getLogger("tenderengine.llm")
 
 
 class StubProvider:
@@ -93,7 +96,19 @@ class LLMGateway:
         call_messages = messages
         if prefill:
             call_messages = list(messages) + [{"role": "assistant", "content": prefill}]
-        out = self.provider.generate(model, system, call_messages, max_tokens)
+        if messages and isinstance(messages[-1].get("content"), str) \
+                and not messages[-1]["content"].strip():
+            raise ValueError("empty prompt content — nothing to send to the model")
+        try:
+            out = self.provider.generate(model, system, call_messages, max_tokens)
+        except Exception as exc:
+            fallback = (self.store.get("llm.models", {}) or {}).get("default")
+            if fallback and fallback != model and "model" in str(exc).lower():
+                log.warning("model %s rejected (%s); retrying with %s", model, exc, fallback)
+                model = fallback
+                out = self.provider.generate(model, system, call_messages, max_tokens)
+            else:
+                raise
         text = out["text"]
         if prefill and not text.lstrip().startswith(prefill.strip()[:1]):
             text = prefill + text

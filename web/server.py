@@ -3,7 +3,8 @@ from __future__ import annotations
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from web import routes_analyze, routes_config, routes_digest, routes_sites
+from web import (routes_analyze, routes_config, routes_digest, routes_settings,
+                 routes_sites, routes_stage, routes_results)
 from web.context import add_context_middleware, _expected_token
 from web.render import _login
 
@@ -29,4 +30,7 @@ def create_app(db_path):
     app.include_router(routes_config.router)
     app.include_router(routes_sites.router)
     app.include_router(routes_analyze.router)
+    app.include_router(routes_settings.router)
+    app.include_router(routes_stage.router)
+    app.include_router(routes_results.router)
     return app

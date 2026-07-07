@@ -74,19 +74,38 @@ def _model_stage(bucket, config):
 
 
 def produce_applicability(tender, extraction, bucket, gateway, config, hint=None):
+    steps = []
     context = _build_context(tender, extraction, config)
+    steps.append(("Build context",
+                  f"{len(context)} chars (company profile + extracted facts)"
+                  + ("" if extraction else " — no extraction available, tender fields only")))
     system = config.get("applicability.prompt", DEFAULT_PROMPT)
     if hint:
         system = system + "\n\nINDICAȚIE: " + hint
     stage = _model_stage(bucket, config)
+    steps.append(("Pick model", f"triage bucket '{bucket}' → model stage '{stage}'"))
+    steps.append(("Model input · system prompt", system[:3000]))
+    steps.append(("Model input · content sent", context[:6000]))
     r = gateway.complete(stage, system, [{"role": "user", "content": context}],
                          max_tokens=int(config.get("applicability.max_output_tokens", 2048)),
                          prefill="{")
+    steps.append(("Call model",
+                  f"{r['model']}: {r['input_tokens']}+{r['output_tokens']} tokens, "
+                  f"${r['cost']:.4f}"))
+    steps.append(("Model output · raw response", (r["text"] or "")[:8000]))
     verdict = _parse_json(r["text"])
+    if isinstance(verdict, dict):
+        steps.append(("Parse verdict",
+                      f"can_execute={verdict.get('can_execute')}, "
+                      f"readiness={verdict.get('readiness_score')}, "
+                      f"gaps={len(verdict.get('gaps') or [])}"))
+    else:
+        steps.append(("Parse verdict", "could not parse the model's JSON output"))
     return {"status": "ok" if verdict is not None else "parse_error",
             "verdict": verdict if verdict is not None else r["text"],
             "source_text": context, "model": r["model"],
-            "cost": r["cost"], "tokens": r["input_tokens"] + r["output_tokens"]}
+            "cost": r["cost"], "tokens": r["input_tokens"] + r["output_tokens"],
+            "steps": steps}
 
 
 def _store_verdict(conn, tender_id, verdict_obj, model):
@@ -97,7 +116,7 @@ def _store_verdict(conn, tender_id, verdict_obj, model):
         conn.execute(
             "INSERT INTO verdicts(tender_id, stage_name, verdict, score, confidence, reason, "
             "model, created_at) VALUES(?,?,?,?,?,?,?,?)",
-            (tender_id, "applicability", None, None, None,
+            (tender_id, "applicability", "unknown", None, None,
              json.dumps({"raw": str(verdict_obj)[:2000]}, ensure_ascii=False),
              model, time.time()))
         conn.commit()
@@ -107,10 +126,11 @@ def _store_verdict(conn, tender_id, verdict_obj, model):
                          "gaps": verdict_obj.get("gaps"),
                          "required_equipment": verdict_obj.get("required_equipment")},
                         ensure_ascii=False)
+    verdict = (verdict_obj.get("can_execute") or verdict_obj.get("verdict") or "unknown")
     conn.execute(
         "INSERT INTO verdicts(tender_id, stage_name, verdict, score, confidence, reason, "
         "model, created_at) VALUES(?,?,?,?,?,?,?,?)",
-        (tender_id, "applicability", verdict_obj.get("can_execute"),
+        (tender_id, "applicability", verdict,
          verdict_obj.get("readiness_score"), verdict_obj.get("confidence"),
          reason, model, time.time()))
     conn.commit()
@@ -133,6 +153,8 @@ class ApplicabilityStage(Stage):
         out = produce_applicability(tender, extraction, bucket, gw, ctx.config)
         if tender_id is not None:
             _store_verdict(ctx.db, int(tender_id), out["verdict"], out["model"])
+            from workflows.trace import log_steps
+            log_steps(ctx.db, int(tender_id), "applicability", out.get("steps"))
             if out["status"] != "ok":
                 flag_parse_failure(ctx.db, int(tender_id), "applicability", str(out["verdict"]))
 

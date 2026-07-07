@@ -148,6 +148,7 @@ def detect_site_profile(store, conn, url, auth=None):
         "render": bool(best.get("render")) if best else False,
         "count": best.get("count", 0) if best else 0,
         "estimate": best.get("estimate") if best else None,
+        "next": bool(best.get("next")) if best else False,
         "needs_login": needs_login,
         "steps": steps,
     }

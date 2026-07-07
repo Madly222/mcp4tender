@@ -50,6 +50,17 @@ CREATE TABLE IF NOT EXISTS stage_runs (
     error TEXT
 );
 
+CREATE TABLE IF NOT EXISTS stage_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tender_id INTEGER NOT NULL,
+    stage TEXT NOT NULL,
+    seq INTEGER NOT NULL,
+    label TEXT,
+    detail TEXT,
+    created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_stage_events ON stage_events(tender_id, stage);
+
 CREATE TABLE IF NOT EXISTS verdicts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     tender_id INTEGER,
@@ -155,7 +166,8 @@ CREATE TABLE IF NOT EXISTS crawl_state (
     total_collected INTEGER DEFAULT 0,
     exhausted INTEGER DEFAULT 0,
     total_estimate INTEGER,
-    note TEXT
+    note TEXT,
+    detected_count INTEGER
 );
 
 CREATE TABLE IF NOT EXISTS dismissed_tenders (
@@ -251,6 +263,10 @@ def _migrate(conn):
     if _column_exists(conn, "crawl_state", "site_id") and \
             not _column_exists(conn, "crawl_state", "note"):
         conn.execute("ALTER TABLE crawl_state ADD COLUMN note TEXT")
+        conn.commit()
+    if _column_exists(conn, "crawl_state", "site_id") and \
+            not _column_exists(conn, "crawl_state", "detected_count"):
+        conn.execute("ALTER TABLE crawl_state ADD COLUMN detected_count INTEGER")
         conn.commit()
 
 
