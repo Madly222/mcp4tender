@@ -298,6 +298,12 @@ COMPONENT MAP
       timezone, unpriced models, analysis backlog, failed tenders). Spend widgets use health.spend/
       spend_by_stage. classify_api_error turns raw Anthropic errors into a code (credit|auth|rate|model|
       network|prompt) + a plain-language fix — reuse it anywhere you show an LLM error.
+      KEY-CHECK BANNER: "Test key" (POST /user-settings/test-key) runs check_api_key (live 1-token ping) and
+      PERSISTS the verdict to config llm.last_key_check {status,code,detail,raw,model,at}. _llm_section renders
+      it as a prominent banner at the top (_key_check_banner): orange "untested" until first run, green on ok,
+      red "API key check FAILED - <code>" with the human fix + raw API message + when/which-model on failure.
+      This is the answer to "why isn't the key working" (credit/auth/model/network) and does NOT depend on a
+      pipeline run having failed first (the run-log failures below still show real in-flight errors separately).
     web/routes_schedule.py -> /schedule: friendly editor for the ONE collect job in schedule.jobs (kind==
       "collect"). Fields: enabled, timezone (IANA, empty=server local), days-of-week pills (none=every day),
       run times (comma HH:MM, max 24), sources (mtender=no tokens / genericweb=uses tokens), "analyse after

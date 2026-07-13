@@ -238,6 +238,34 @@ def _models_section(store, ro):
             + "".join(rows) + save + '</div></form>')
 
 
+def _key_check_banner(store):
+    chk = store.get("llm.last_key_check", None)
+    if not chk or not isinstance(chk, dict):
+        return ('<div class="iss"><span class="lv warn">untested</span>'
+                '<div><div class="tt">The API key has not been tested yet.</div>'
+                '<div class="fx">Click <b>Test key</b> in the API key section below to check '
+                'right now whether the key works, is out of credits, or is rejected.</div>'
+                '</div></div>')
+    ok = chk.get("status") == OK
+    lv = "ok" if ok else "fail"
+    when = _ts(chk.get("at")) if chk.get("at") else "?"
+    model = chk.get("model") or "default"
+    if ok:
+        tt = "API key works."
+        fx = f'Live check against model "{_e(model)}" succeeded at {_e(when)}.'
+    else:
+        code = chk.get("code") or "error"
+        tt = f'API key check FAILED &mdash; {_e(code)}'
+        fx = _e(chk.get("detail") or "")
+        raw = chk.get("raw")
+        if raw:
+            fx += f'<div class="raw" style="margin-top:5px">{_e(raw)}</div>'
+        fx += (f'<div class="mut" style="margin-top:5px;font-size:11.5px">'
+               f'Last tested {_e(when)} against model "{_e(model)}".</div>')
+    return (f'<div class="iss"><span class="lv {lv}">{lv}</span>'
+            f'<div><div class="tt">{tt}</div><div class="fx">{fx}</div></div></div>')
+
+
 def _llm_section(conn, store):
     st = llm_status(conn, store)
     errors = recent_llm_errors(conn, days=7, limit=8)
@@ -246,11 +274,12 @@ def _llm_section(conn, store):
     prov_note = "fake output" if prov == "stub" else "real model calls"
     counts = ", ".join(f"{k} x{v}" for k, v in sorted(st["counts"].items())) or "none"
 
+    key_banner = _key_check_banner(store)
+
     head = (f'<div class="llmrow">'
             f'<div><b>{_e(prov)}</b><span>provider in use ({prov_note})</span></div>'
             f'<div><b>{_e(st["key_source"])}</b><span>api key source</span></div>'
-            f'<div><b>{_e(counts)}</b><span>failures, last 7 days</span></div>'
-            f'<div><b>unavailable</b><span>credit balance</span></div></div>')
+            f'<div><b>{_e(counts)}</b><span>failures, last 7 days</span></div></div>')
 
     banner = (f'<div class="iss"><span class="lv {lv}">{lv}</span>'
               f'<div><div class="tt">{_e(st["why"])}</div></div></div>')
@@ -272,13 +301,15 @@ def _llm_section(conn, store):
                'When one does, the exact message from the API appears here.</p>')
 
     note = ('<p class="sub" style="margin-top:14px">Anthropic exposes no endpoint for the '
-            'remaining credit balance, so this page cannot show it. It only becomes visible '
-            'through a failing call ("out of credits" above) or in the '
+            'remaining credit balance, so this page cannot show a number. Use <b>Test key</b> '
+            'below for a live check ("out of credits", "key rejected", "model not found" all '
+            f'show up there and above), or open the '
             f'<a href="{CONSOLE_URL}" target=_blank>Console billing page</a>.</p>')
 
     return ('<div class="us-sect card"><h3>LLM status</h3>'
-            '<p class="sub">Why the model is or is not working right now, taken from the '
-            'engine run log.</p>' + head + banner + log + note + '</div>')
+            '<p class="sub">Why the model is or is not working right now. The banner just below '
+            'is the result of the last manual key test; the log at the bottom is real failures '
+            'from the engine run log.</p>' + key_banner + head + banner + log + note + '</div>')
 
 
 def _errors_section(conn, store):
@@ -451,11 +482,16 @@ async def save_apikey(request: Request):
 async def test_key(request: Request):
     if request.state.readonly:
         return _redir(err="read-only mode")
+    import time
     f = await request.form()
     typed = (f.get("api_key") or "").strip()
     store = request.state.store
     model = (store.get("llm.models", {}) or {}).get("default")
     r = check_api_key(model=model, key=typed or None)
+    store.set("llm.last_key_check",
+              {"status": r["status"], "code": r.get("code"), "detail": r.get("detail"),
+               "raw": r.get("raw"), "model": model, "at": time.time()},
+              actor="web", note="test key result")
     if r["status"] == "ok":
         return _redir(msg="key works")
     return _redir(err=f"{r['code']}: {r['detail']}")
