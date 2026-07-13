@@ -57,3 +57,62 @@ def test_blank_key_keeps_current(tmp_path, monkeypatch):
     c = TestClient(create_app(_app(tmp_path)))
     r = c.post("/user-settings/apikey", data={"api_key": ""}, follow_redirects=False)
     assert "unchanged" in r.headers["location"]
+
+
+def test_key_banner_untested_by_default(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-x")
+    h = TestClient(create_app(_app(tmp_path))).get("/user-settings").text
+    assert "has not been tested yet" in h
+    assert "untested" in h
+
+
+def test_dead_credit_placeholder_gone(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    h = TestClient(create_app(_app(tmp_path))).get("/user-settings").text
+    assert ">credit balance<" not in h
+
+
+def test_key_banner_shows_failed_check(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-x")
+    p = _app(tmp_path)
+    store = ConfigStore(db.connect(p)); store.reload()
+    import time
+    store.set("llm.last_key_check",
+              {"status": "fail", "code": "credit", "detail": "Out of credits. Top up or mint a new key.",
+               "raw": "Error 400: credit balance is too low", "model": "claude-haiku-4-5-20251001",
+               "at": time.time()}, actor="test", note="x")
+    h = TestClient(create_app(p)).get("/user-settings").text
+    assert "API key check FAILED" in h
+    assert "credit" in h
+    assert "Out of credits" in h
+    assert "credit balance is too low" in h
+
+
+def test_key_banner_shows_ok_check(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-x")
+    p = _app(tmp_path)
+    store = ConfigStore(db.connect(p)); store.reload()
+    import time
+    store.set("llm.last_key_check",
+              {"status": "ok", "code": "valid", "detail": "Key works.", "raw": None,
+               "model": "claude-haiku-4-5-20251001", "at": time.time()}, actor="test", note="x")
+    h = TestClient(create_app(p)).get("/user-settings").text
+    assert "API key works" in h
+
+
+def test_test_key_persists_result(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-x")
+    import web.routes_settings as rs
+    monkeypatch.setattr(rs, "check_api_key",
+                        lambda **k: {"status": "fail", "code": "auth",
+                                     "detail": "The API key is rejected.", "raw": "401"})
+    p = _app(tmp_path)
+    c = TestClient(create_app(p))
+    c.post("/user-settings/test-key", data={"api_key": ""}, follow_redirects=False)
+    store = ConfigStore(db.connect(p)); store.reload()
+    chk = store.get("llm.last_key_check")
+    assert chk["status"] == "fail" and chk["code"] == "auth"
