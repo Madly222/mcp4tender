@@ -91,6 +91,41 @@ def _guess_format(title, explicit):
     return None
 
 
+_DOC_TS_RE = re.compile(r"-(\d{10,})(?:[/?#].*)?$")
+
+
+def _doc_title_key(title, url):
+    if title and str(title).strip():
+        return str(title).strip().lower()
+    if url:
+        tail = str(url).rstrip("/").rsplit("/", 1)[-1]
+        return _DOC_TS_RE.sub("", tail).strip().lower() or str(url).lower()
+    return ""
+
+
+def _doc_version(doc):
+    url = doc.get("url") or ""
+    m = _DOC_TS_RE.search(str(url))
+    if m:
+        return (1, int(m.group(1)))
+    dp = doc.get("datePublished") or ""
+    return (0, str(dp))
+
+
+def dedupe_documents(docs):
+    best = {}
+    order = []
+    for d in docs:
+        key = _doc_title_key(d.get("title"), d.get("url"))
+        if key not in best:
+            best[key] = d
+            order.append(key)
+        else:
+            if _doc_version(d) >= _doc_version(best[key]):
+                best[key] = d
+    return [best[k] for k in order]
+
+
 def _documents(crs):
     docs = []
     seen = set()
@@ -110,7 +145,7 @@ def _documents(crs):
                                  "type": d.get("documentType"),
                                  "format": _guess_format(d.get("title"), d.get("format")),
                                  "datePublished": d.get("datePublished")})
-    return docs
+    return dedupe_documents(docs)
 
 
 def normalize_record(record_package, ocid):

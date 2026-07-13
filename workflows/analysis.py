@@ -195,6 +195,32 @@ def dedupe_mtender(conn):
     return removed
 
 
+def dedupe_documents_db(conn, source="mtender"):
+    import json as _json
+    from workflows.collectors.mtender import dedupe_documents
+    rows = conn.execute(
+        "SELECT id, normalized_json FROM tenders WHERE source=?", (source,)).fetchall()
+    changed = 0
+    removed = 0
+    for r in rows:
+        try:
+            nj = _json.loads(r["normalized_json"] or "{}")
+        except Exception:
+            continue
+        docs = nj.get("documents")
+        if not isinstance(docs, list) or len(docs) < 2:
+            continue
+        deduped = dedupe_documents(docs)
+        if len(deduped) < len(docs):
+            nj["documents"] = deduped
+            conn.execute("UPDATE tenders SET normalized_json=? WHERE id=?",
+                         (_json.dumps(nj, ensure_ascii=False), r["id"]))
+            changed += 1
+            removed += len(docs) - len(deduped)
+    conn.commit()
+    return {"tenders_changed": changed, "documents_removed": removed}
+
+
 _STAGE_ORDER = ["triage", "extract", "applicability", "suppliers"]
 _STAGE_PREV = {"triage": "new", "extract": "triaged",
                "applicability": "extracted", "suppliers": "analyzed"}

@@ -180,6 +180,13 @@ COMPONENT MAP
     release date), 'date'. DEDUP: base_ocid(ocid) strips stage suffixes (ocds-<p>-<CC>-<digits>); the collector
     keys external_id on the base so planning/tender/award stage-copies of one process collapse to one tender;
     analysis.dedupe_mtender(conn) merges already-stored duplicates (button "Dedupe MTender" on /sites).
+    DOCUMENT DEDUP: MTender re-uploads the same attachment on each stage/amendment with a NEW uuid+url (the url
+    tail -<epoch_ms> is the version marker), so _documents() would otherwise list the same file many times.
+    dedupe_documents(docs) (mtender.py) groups by normalized title (_doc_title_key, falls back to the url
+    filename minus the -<ts> tail) and keeps the NEWEST version (_doc_version = the trailing epoch-ms, else
+    datePublished), preserving first-seen order. _documents() runs it automatically on every collect. For
+    already-stored tenders: analysis.dedupe_documents_db(conn) rewrites each tender's normalized_json.documents
+    — exposed as CLI `app.py dedupe-docs [--source mtender]` and the "Dedupe documents" button on /sites.
     SEND: workflows/collectors/mtender.py (+ config/defaults/30_sources.json)
 
 [10] ANALYSIS PIPELINE (triage -> extract -> applicability -> suppliers -> verify)
