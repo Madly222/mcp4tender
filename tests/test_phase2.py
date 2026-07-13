@@ -5,6 +5,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import datetime as dt
+
 from engine import db
 from engine.config_store import ConfigStore
 from engine.collectors import run_collector
@@ -12,11 +14,23 @@ import workflows  # noqa: F401
 import workflows.collectors.mtender as mt
 
 
+def _iso(days_from_today, hour=10):
+    d = dt.date.today() + dt.timedelta(days=days_from_today)
+    return f"{d.isoformat()}T{hour:02d}:00:00Z"
+
+
+PUB = _iso(-5)
+PUB2 = _iso(-5, 11)
+DEADLINE = _iso(20)
+ENQUIRY = _iso(10)
+DEADLINE2 = _iso(25)
+
+
 RECORD = {
     "records": [
         {"ocid": "ocds-b3wdp1-MD-1", "compiledRelease": {
             "ocid": "ocds-b3wdp1-MD-1",
-            "date": "2026-06-01T10:00:00Z",
+            "date": PUB,
             "buyer": {"id": "MD-1", "name": "IGPF"},
             "parties": [{"id": "MD-1", "name": "IGPF", "roles": ["buyer"]}],
             "tender": {
@@ -28,8 +42,8 @@ RECORD = {
                                    "description": "Test machines"},
                 "items": [{"id": "i1", "classification": {"scheme": "CPV",
                                                           "id": "38540000-2"}}],
-                "tenderPeriod": {"endDate": "2026-06-20T00:00:00Z"},
-                "enquiryPeriod": {"endDate": "2026-06-15T00:00:00Z"},
+                "tenderPeriod": {"endDate": DEADLINE},
+                "enquiryPeriod": {"endDate": ENQUIRY},
                 "documents": [{"id": "d1", "documentType": "tenderNotice",
                                "title": "Caiet", "format": "application/pdf",
                                "url": "https://storage.mtender.gov.md/get/abc-1"}],
@@ -38,15 +52,15 @@ RECORD = {
     ]
 }
 
-LIST = {"data": [{"ocid": "ocds-b3wdp1-MD-1", "date": "2026-06-01T10:00:00Z"},
-                 {"ocid": "ocds-b3wdp1-MD-2", "date": "2026-06-01T11:00:00Z"}],
-        "offset": "2026-06-01T11:00:00Z"}
+LIST = {"data": [{"ocid": "ocds-b3wdp1-MD-1", "date": PUB},
+                 {"ocid": "ocds-b3wdp1-MD-2", "date": PUB2}],
+        "offset": PUB2}
 
 
 MULTI = {
     "records": [
         {"ocid": "ocds-b3wdp1-MD-9-plan", "compiledRelease": {
-            "date": "2026-06-01T08:00:00Z",
+            "date": PUB,
             "planning": {},
             "parties": [{"id": "MD-9", "name": "Gimnaziul X", "roles": ["buyer"]}],
             "tender": {
@@ -59,13 +73,13 @@ MULTI = {
             },
         }},
         {"ocid": "ocds-b3wdp1-MD-9-notice", "compiledRelease": {
-            "date": "2026-06-02T08:00:00Z",
+            "date": PUB2,
             "awards": [{"id": "a1"}],
             "tender": {
                 "documents": [{"id": "d1", "documentType": "tenderNotice",
                                "title": "Caiet de sarcini", "format": "application/pdf",
                                "url": "https://storage.mtender.gov.md/get/xyz-1"}],
-                "tenderPeriod": {"endDate": "2026-06-25T00:00:00Z"},
+                "tenderPeriod": {"endDate": DEADLINE2},
             },
         }},
     ]
@@ -99,7 +113,7 @@ def test_normalize_full():
     assert n["value_amount"] == 1500000
     assert n["value_currency"] == "MDL"
     assert n["status"] == "active"
-    assert n["deadline"] == "2026-06-20T00:00:00Z"
+    assert n["deadline"] == DEADLINE
     assert any(c["id"] == "38540000-2" for c in n["cpv"])
     assert len(n["documents"]) == 1
 
@@ -126,7 +140,7 @@ def test_normalize_merges_across_records():
     assert any(c["id"] == "22600000-6" for c in n["cpv"])
     assert len(n["documents"]) == 1
     assert n["documents"][0]["url"].endswith("xyz-1")
-    assert n["deadline"] == "2026-06-25T00:00:00Z"
+    assert n["deadline"] == DEADLINE2
 
 
 def test_document_format_inferred_from_title():
@@ -165,7 +179,7 @@ def test_collector_stores_and_counts(tmp_path):
     raw = conn.execute("SELECT COUNT(*) AS c FROM raw_documents").fetchone()["c"]
     assert tenders == 2 and raw == 2
     state = conn.execute("SELECT cursor FROM source_state WHERE source='mtender'").fetchone()
-    assert state["cursor"] == "2026-06-01T11:00:00Z"
+    assert state["cursor"] == PUB2
 
 
 def test_collector_disabled(tmp_path):
@@ -210,3 +224,28 @@ if __name__ == "__main__":
                     print(f"FAIL {name}: {exc}")
                     raise
     print("all tests passed")
+
+
+def test_collector_skips_expired_tenders(tmp_path, monkeypatch):
+    import copy
+    expired = copy.deepcopy(RECORD)
+    expired["records"][0]["compiledRelease"]["tender"]["tenderPeriod"]["endDate"] = _iso(-2)
+    calls = {"n": 0}
+
+    def fake_get_json(url, timeout=30):
+        if "/tenders/" in url:
+            return expired
+        calls["n"] += 1
+        if calls["n"] > 1:
+            return {"data": []}
+        return {"data": [{"ocid": "ocds-b3wdp1-MD-1", "date": PUB}], "offset": PUB}
+
+    monkeypatch.setattr(mt, "get_json", fake_get_json)
+    conn = db.connect(tmp_path / "x.db"); db.init_schema(conn)
+    store = ConfigStore(conn); store.reload()
+    store.set("sources.mtender", {"enabled": True, "backfill_days": 30})
+    store.set("results.archive_after_days", 90)
+    r = run_collector("mtender", store, conn)
+    assert r["new"] == 0
+    assert r["too_old"] == 1
+    assert conn.execute("SELECT COUNT(*) FROM tenders").fetchone()[0] == 0

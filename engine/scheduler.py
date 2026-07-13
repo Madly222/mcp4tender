@@ -3,20 +3,61 @@ from __future__ import annotations
 import datetime as dt
 import json
 import threading
-import time
+
+_DAYNAMES = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
+
+MAX_TIMES_PER_DAY = 24
 
 
 def job_key(job) -> str:
     return json.dumps(job, sort_keys=True, ensure_ascii=False)
 
 
-def job_due(job, now: dt.datetime, last_fired: dict) -> dt.datetime | None:
+def _norm_days(days):
+    out = set()
+    for d in days or []:
+        if isinstance(d, bool):
+            continue
+        if isinstance(d, int):
+            out.add(d % 7)
+        else:
+            k = str(d).strip().lower()[:3]
+            if k in _DAYNAMES:
+                out.add(_DAYNAMES[k])
+    return out
+
+
+def job_times(job):
+    seen = []
+    for t in job.get("at") or []:
+        t = str(t)
+        if t not in seen:
+            seen.append(t)
+    return sorted(seen)[:MAX_TIMES_PER_DAY]
+
+
+def now_in_tz(store):
+    tzname = (store.get("schedule.timezone", "") or "").strip()
+    if tzname:
+        try:
+            from zoneinfo import ZoneInfo
+            return dt.datetime.now(ZoneInfo(tzname))
+        except Exception:
+            pass
+    return dt.datetime.now()
+
+
+def job_due(job, now, last_fired):
     if not job.get("enabled", True):
         return None
+    days = _norm_days(job.get("days"))
+    if days and now.weekday() not in days:
+        return None
     key = job_key(job)
-    if "at" in job:
+    times = job_times(job)
+    if times:
         current = now.strftime("%H:%M")
-        if current in job["at"]:
+        if current in times:
             slot = now.replace(second=0, microsecond=0)
             if last_fired.get(key) != slot:
                 return slot
@@ -34,24 +75,24 @@ class Scheduler:
         self.store = store
         self.dispatch = dispatch
         self.logger = logger or (lambda m: None)
-        self.last_fired: dict = {}
+        self.last_fired = {}
         self._stop = threading.Event()
 
-    def tick(self, now: dt.datetime | None = None) -> list:
-        now = now or dt.datetime.now()
+    def tick(self, now=None):
+        now = now or now_in_tz(self.store)
         jobs = self.store.get("schedule.jobs", [])
         fired = []
         for job in jobs:
             slot = job_due(job, now, self.last_fired)
             if slot is not None:
                 self.last_fired[job_key(job)] = slot
-                pipeline = job["pipeline"]
-                self.logger(f"dispatch {pipeline}")
+                label = job.get("pipeline") or job.get("kind") or "job"
+                self.logger(f"dispatch {label}")
                 try:
-                    self.dispatch(pipeline, job)
+                    self.dispatch(job.get("pipeline"), job)
                 except Exception as exc:
-                    self.logger(f"dispatch error {pipeline}: {exc}")
-                fired.append(pipeline)
+                    self.logger(f"dispatch error {label}: {exc}")
+                fired.append(label)
         return fired
 
     def run_forever(self, interval: int = 30):

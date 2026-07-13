@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 
 from workflows.supervisor import build_digest
 from web.render import _e, _layout, _loose, _table, _ts, _vclass, source_url
+from web.routes_results import pub_value, show_date
 
 router = APIRouter()
 
@@ -37,7 +38,7 @@ def home(request: Request):
             f'<span class="{_vclass(d.get("verdict"))}">{_e(d.get("verdict"))}</span>',
             f'<span class="r">{_e(d.get("readiness_score"))}</span>',
             f'<span class="nowrap">{_e(margin)} {_e(d.get("currency"))}</span>',
-            f'<span class="nowrap">{_e(d.get("deadline") or "?")}</span>',
+            f'<span class="nowrap">{show_date(d.get("deadline"))}</span>',
         ])
     body = _table(["Rank", "Tender", "Verdict", "Score", "Margin", "Deadline"], rows)
     return _layout(request, f"Digest ({len(digest)})", body)
@@ -78,17 +79,20 @@ def tender(request: Request, id: int):
     ef = _loose(ex_row["fields_json"]) if ex_row else {}
     ef = ef if isinstance(ef, dict) else {}
     est_deadline = ef.get("data_depunerii")
+    amount = _e(nj.get("value_amount"))
+    currency = _e(nj.get("value_currency"))
     kv = [
         ("title", _e(nj.get("title"))),
         ("buyer", _e(nj.get("buyer"))),
-        ("value", f'{_e(nj.get("value_amount"))} {_e(nj.get("value_currency"))}'),
-        ("published (data publicării)", _e(nj.get("publication_date") or "—")),
-        ("submission deadline (data depunerii)", _e(nj.get("deadline") or "—")),
-        ("enquiry deadline (limită clarificări)", _e(nj.get("enquiry_deadline") or "—")),
+        ("value", f'{amount} {currency}'),
+        ("published (data publicării)", show_date(pub_value(nj), with_time=False)),
+        ("submission deadline (data depunerii)", show_date(nj.get("deadline"))),
+        ("enquiry deadline (limită clarificări)", show_date(nj.get("enquiry_deadline"))),
     ]
     if est_deadline and not nj.get("deadline"):
+        est_txt = show_date(est_deadline)
         kv.append(("est. deadline (from documents)",
-                   f'{_e(est_deadline)} <span class=mut>· AI-estimated</span>'))
+                   f'{est_txt} <span class=mut>· AI-estimated</span>'))
     portal = (request.state.store.get("sources.mtender", {}) or {}).get("portal_url_template")
     surl = source_url(row["source"], row["external_id"], portal)
     src_link = (f' <a href="{_e(surl)}" target=_blank>open on source portal ↗</a>' if surl else "")

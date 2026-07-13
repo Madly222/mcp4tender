@@ -54,6 +54,13 @@ def cmd_serve(conn, store, _args):
         return 1
 
     def dispatch(pipeline, job):
+        if job.get("kind") == "collect":
+            from workflows.collect_jobs import run_collect_job
+            r = run_collect_job(job, store, conn, _log)
+            _log(f"collect job -> new={r['new']}")
+            return
+        if not pipeline:
+            return
         result = run_pipeline(pipeline, store, conn)
         _log(f"{pipeline} -> {result['status']}")
 
@@ -75,6 +82,13 @@ def _start_scheduler_thread():
         store.reload()
 
         def dispatch(pipeline, job):
+            if job.get("kind") == "collect":
+                from workflows.collect_jobs import run_collect_job
+                r = run_collect_job(job, store, conn, _log)
+                _log(f"sched collect job -> new={r['new']}")
+                return
+            if not pipeline:
+                return
             result = run_pipeline(pipeline, store, conn)
             _log(f"sched {pipeline} -> {result['status']}")
 

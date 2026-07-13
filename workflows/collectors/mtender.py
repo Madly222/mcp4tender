@@ -6,6 +6,7 @@ import re
 from engine.collectors import (CollectContext, CollectedItem, CollectResult,
                                Collector, register_collector)
 from engine.http import get_json
+from engine.lifecycle import collect_ceiling, item_archive_reason
 
 _OCID_BASE_RE = re.compile(r"^(ocds-[a-z0-9]+-[A-Z]{2}-\d+)")
 
@@ -149,11 +150,13 @@ class MTenderCollector(Collector):
         page_limit = int(sc.get("page_limit", 5))
         max_records = int(sc.get("max_records_per_run", 200))
         backfill_days = int(sc.get("backfill_days", 30))
+        ceiling = collect_ceiling(ctx.config)
 
         cursor = ctx.cursor or _initial_cursor(backfill_days)
         items = []
         seen = set()
         pages = 0
+        skipped_dead = 0
 
         while pages < page_limit and len(items) < max_records:
             pages += 1
@@ -173,6 +176,9 @@ class MTenderCollector(Collector):
                 try:
                     record = get_json(record_tpl.format(ocid=ocid), timeout=timeout)
                     normalized = normalize_record(record, base)
+                    if ceiling and item_archive_reason(normalized, archive_days=ceiling):
+                        skipped_dead += 1
+                        continue
                     items.append(CollectedItem(external_id=base, raw=record,
                                               normalized=normalized))
                 except Exception:
@@ -188,4 +194,5 @@ class MTenderCollector(Collector):
                     break
                 cursor = last
 
-        return CollectResult(items=items, cursor=cursor, fetched=len(items))
+        return CollectResult(items=items, cursor=cursor, fetched=len(items),
+                             too_old=skipped_dead)

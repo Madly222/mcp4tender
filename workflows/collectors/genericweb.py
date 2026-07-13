@@ -13,6 +13,8 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 from engine.collectors import (CollectContext, CollectedItem, CollectResult,
                                Collector, register_collector)
 from engine.http import get_text
+from engine.dateparse import normalize_field, parse_date
+from engine.lifecycle import archive_reason, collect_ceiling
 from engine.jsonutil import loads_loose
 from engine.llm import LLMGateway
 
@@ -24,7 +26,8 @@ DEFAULT_EXTRACT_PROMPT = (
     "to the NEXT page of results, and read the total number of results if the site states it. "
     "Reply with a JSON object ONLY, no markdown, no extra text: "
     "{\"tenders\":[{\"title\":string,\"url\":string|null,\"ref\":string|null,\"buyer\":string|null,"
-    "\"deadline\":string|null,\"date\":string|null,\"value\":string|null,\"currency\":string|null,"
+    "\"deadline\":string|null,\"enquiry_deadline\":string|null,\"date\":string|null,"
+    "\"value\":string|null,\"currency\":string|null,"
     "\"description\":string|null}],\"next_page_url\":string|null,\"total_estimate\":number|null,"
     "\"last_page\":number|null}. "
     "Links in the text are shown as 'text [absolute-url]'. "
@@ -37,8 +40,11 @@ DEFAULT_EXTRACT_PROMPT = (
     "'Найдено 1234', 'Всего 1234', '1-20 din 1234' -> 1234), else null. "
     "last_page = the highest page number visible in the pagination (e.g. links '1 2 3 ... 250', a "
     "'last'/'ultima'/'Последняя' link to page 250, or '?page=250' in a last-page link -> 250), else null. "
-    "date = the publication/posting date of the tender if shown (prefer ISO YYYY-MM-DD; "
-    "otherwise copy the date text as-is), else null. "
+    "date = the publication/posting date of the tender if shown, else null. "
+    "deadline = the submission deadline (termen limita de depunere), else null. "
+    "enquiry_deadline = the deadline for questions/clarifications (limita clarificari), else null. "
+    "For all three dates prefer ISO YYYY-MM-DD (append THH:MM when an hour is shown); "
+    "if unsure, copy the date text exactly as printed. "
     "Use null for any missing field. If there are no announcements, return an empty tenders list."
 )
 
@@ -167,22 +173,7 @@ def _external_id(site_id, item):
 
 
 def _tender_date(date_str):
-    if not date_str:
-        return None
-    s = str(date_str).strip()
-    m = re.search(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})", s)
-    if m:
-        try:
-            return dt.date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
-        except ValueError:
-            pass
-    m = re.search(r"(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})", s)
-    if m:
-        try:
-            return dt.date(int(m.group(3)), int(m.group(2)), int(m.group(1)))
-        except ValueError:
-            pass
-    return None
+    return parse_date(date_str)
 
 
 def _tender_age_days(date_str):
@@ -216,9 +207,12 @@ def _normalize_item(site, item):
         "procurement_method": None,
         "main_category": None,
         "cpv": [],
-        "deadline": item.get("deadline"),
-        "enquiry_deadline": None,
-        "published": item.get("date"),
+        "deadline": normalize_field(item.get("deadline")),
+        "deadline_raw": item.get("deadline"),
+        "enquiry_deadline": normalize_field(item.get("enquiry_deadline")),
+        "enquiry_deadline_raw": item.get("enquiry_deadline"),
+        "publication_date": normalize_field(item.get("date")),
+        "published_raw": item.get("date"),
         "documents": docs,
         "date": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "source_site": site.get("label") or site.get("url"),
@@ -411,7 +405,7 @@ class GenericWebCollector(Collector):
         hard_cap = int(sc.get("max_pages_per_run", 60))
         inc_cap = int(sc.get("incremental_max_pages", 5))
         fallback = int(sc.get("fallback_batch", 30))
-        max_age = _parse_int(store.get("collect.max_age_days"))
+        max_age = collect_ceiling(store)
         sites = store.get("sites.tenders", []) or []
         gw = LLMGateway(store, conn)
         log.info("collect start mode=%s sites=%d", mode, len(sites))
@@ -478,8 +472,10 @@ class GenericWebCollector(Collector):
                     if not isinstance(t, dict) or not t.get("title"):
                         continue
                     if max_age and max_age > 0:
-                        age = _tender_age_days(t.get("date"))
-                        if age is not None and age > max_age:
+                        reason = archive_reason(parse_date(t.get("date")),
+                                                parse_date(t.get("deadline")),
+                                                archive_days=max_age)
+                        if reason:
                             too_old += 1
                             site_too_old += 1
                             continue

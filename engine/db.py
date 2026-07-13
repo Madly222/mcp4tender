@@ -268,6 +268,9 @@ def _migrate(conn):
             not _column_exists(conn, "crawl_state", "detected_count"):
         conn.execute("ALTER TABLE crawl_state ADD COLUMN detected_count INTEGER")
         conn.commit()
+    if not _column_exists(conn, "tenders", "origin"):
+        conn.execute("ALTER TABLE tenders ADD COLUMN origin TEXT")
+        conn.commit()
 
 
 SCHEMA_SUPERVISOR = """
