@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import time
 
 from engine.secrets import get_api_key, key_source
@@ -7,6 +8,8 @@ from engine.secrets import get_api_key, key_source
 OK = "ok"
 WARN = "warn"
 FAIL = "fail"
+
+BLOCKING_CODES = ("credit", "limit", "auth", "model", "network")
 
 STAGE_KEYS = ("default", "extract", "ocr", "verify", "applicability",
               "applicability_gray", "suppliers")
@@ -31,10 +34,22 @@ def spend_by_stage(conn, days=30):
     return [{"stage": r[0], "cost": r[1], "tokens": r[2]} for r in rows]
 
 
+def _regain_date(msg):
+    m = re.search(r"regain access on ([0-9]{4}-[0-9]{2}-[0-9]{2}(?: at [0-9:]+ ?[A-Z]*)?)", msg)
+    return m.group(1) if m else None
+
+
 def classify_api_error(exc):
     msg = str(exc)
     low = msg.lower()
-    if "credit balance is too low" in low or "insufficient" in low or "billing" in low:
+    if "usage limit" in low or "specified api usage" in low or "spend limit" in low:
+        when = _regain_date(msg)
+        tail = f" Access returns on {when}." if when else ""
+        return ("limit", "A spending/usage limit set on the Anthropic account has been reached, "
+                         "so the API is refusing calls." + tail + " Raise or remove the limit in "
+                         "the Anthropic Console (Settings -> Limits), or wait for it to reset.")
+    if ("credit balance is too low" in low or "insufficient" in low or "billing" in low
+            or "out of credit" in low):
         return ("credit", "Out of credits. Anthropic returns this same message for three "
                           "different causes: credits really are exhausted, the model needs a "
                           "higher usage tier, or the key is stale. Top up or mint a new key.")
@@ -116,7 +131,7 @@ def llm_status(conn, store, env_path=None, days=7):
     counts = error_counts(conn, days=days)
     if provider == "stub":
         state, why = FAIL, "Stub provider active: every LLM stage returns fake text."
-    elif last and last["code"] in ("credit", "auth"):
+    elif last and last["code"] in BLOCKING_CODES:
         state, why = FAIL, last["fix"]
     elif counts:
         state, why = WARN, "Some LLM calls failed recently."
@@ -142,7 +157,7 @@ def collect_issues(conn, store, env_path=None):
 
     status = llm_status(conn, store, env_path)
     last = status["last_error"]
-    if last and last["code"] in ("credit", "auth", "model", "network"):
+    if last and last["code"] in BLOCKING_CODES:
         _add(issues, FAIL, "LLM calls are failing: " + last["code"], last["fix"])
 
     models = store.get("llm.models", {}) or {}
