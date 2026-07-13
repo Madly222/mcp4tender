@@ -113,6 +113,26 @@ def test_classify_unknown_is_truncated():
     assert code == "unknown" and len(detail) <= 300
 
 
+def test_classify_usage_limit():
+    msg = ("Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', "
+           "'message': 'You have reached your specified API usage limits. You will regain "
+           "access on 2026-08-01 at 00:00 UTC.'}}")
+    code, detail = classify_api_error(Exception(msg))
+    assert code == "limit"
+    assert "2026-08-01" in detail
+    assert "Console" in detail
+
+
+def test_usage_limit_is_blocking():
+    from engine.health import BLOCKING_CODES
+    assert "limit" in BLOCKING_CODES
+
+
+def test_classify_out_of_credit_variants():
+    assert classify_api_error(Exception("Your credit balance is too low"))[0] == "credit"
+    assert classify_api_error(Exception("out of credit"))[0] == "credit"
+
+
 def _run(conn, stage, cost, tokens, ago_days=0):
     conn.execute("INSERT INTO stage_runs(run_id,stage_name,status,started_at,tokens,cost)"
                  " VALUES('r',?,'done',?,?,?)", (stage, time.time() - ago_days*86400, tokens, cost))
@@ -157,6 +177,18 @@ def test_issue_schedule_without_times(tmp_path, monkeypatch):
     issues = collect_issues(conn, store)
     assert any("no run times" in i["title"] for i in issues)
     assert any(i["level"] == "fail" for i in issues)
+
+
+def test_issue_usage_limit_surfaces(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-x")
+    conn, store = _db(tmp_path)
+    msg = ("Error code: 400 - invalid_request_error: You have reached your specified "
+           "API usage limits. You will regain access on 2026-08-01 at 00:00 UTC.")
+    conn.execute("INSERT INTO stage_runs(run_id,stage_name,status,started_at,error)"
+                 " VALUES('r','applicability','failed',?,?)", (time.time(), msg))
+    conn.commit()
+    issues = collect_issues(conn, store)
+    assert any("limit" in i["title"] and i["level"] == "fail" for i in issues)
 
 
 def test_issue_bad_timezone(tmp_path, monkeypatch):

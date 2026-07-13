@@ -296,8 +296,11 @@ COMPONENT MAP
       provider anthropic|stub, key_source, last failure + human-readable fix), _errors_section (recent_llm_
       errors/error_counts) and a diagnostics list from collect_issues (stub-in-use, disabled sources, bad
       timezone, unpriced models, analysis backlog, failed tenders). Spend widgets use health.spend/
-      spend_by_stage. classify_api_error turns raw Anthropic errors into a code (credit|auth|rate|model|
-      network|prompt) + a plain-language fix — reuse it anywhere you show an LLM error.
+      spend_by_stage. classify_api_error turns raw Anthropic errors into a code (credit|limit|auth|rate|model|
+      network|prompt) + a plain-language fix — reuse it anywhere you show an LLM error. "limit" = an account
+      spend/usage cap was hit (distinct from "credit"=no funds) and it parses the regain date from the message.
+      BLOCKING_CODES (credit,limit,auth,model,network) is the set that flips llm_status/collect_issues to FAIL;
+      add any new hard-stop code THERE too, or it classifies but never surfaces in the top Errors list.
       KEY-CHECK BANNER: "Test key" (POST /user-settings/test-key) runs check_api_key (live 1-token ping) and
       PERSISTS the verdict to config llm.last_key_check {status,code,detail,raw,model,at}. _llm_section renders
       it as a prominent banner at the top (_key_check_banner): orange "untested" until first run, green on ok,
