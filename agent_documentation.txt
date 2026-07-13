@@ -57,6 +57,12 @@ GLOBAL CONTRACTS (shared by everything)
 - Defaults live in config/defaults/*.json (seeded once at bootstrap; new keys auto-added, existing untouched).
 - Pipeline status flow (tenders.status): collect->"new"; triage->"triaged"; extract->"extracted";
   applicability->"analyzed"; suppliers->"sourced".
+- tenders.origin (TEXT, auto-migrated): how a tender entered — "incremental" (daily/scheduled front-page
+  check) vs "backfill" (manual history crawl from Sites). Set by engine/collectors._store_item at insert.
+  This is the INPUT to segmentation (New vs General/History), separate from status. See [16].
+- SEGMENTS (workflows/segments.py, a DERIVED view, not a stored column): every tender is classified live
+  into new | history | archive from origin + created_at + pub/deadline dates. New = incremental finds
+  inside results.new_days; archive = deadline passed OR aged past results.archive_after_days; else history.
 - external_id: genericweb = "<site_id>:<sha1(url|ref|title)[:16]>"; mtender = ocid-based.
 - DB tables (engine/db.py, CREATE IF NOT EXISTS + _migrate/_column_exists on each boot): tenders, verdicts,
   extractions, verifications, suppliers, raw_documents, source_state, source_runs, pipeline_runs, stage_runs,
@@ -77,7 +83,8 @@ COMPONENT MAP
     Purpose: versioned key/value config with audit + seed defaults.
     Files: engine/config_store.py ; config/defaults/*.json ; web/config_meta.py (tooltips: describe(key))
     Config files map 1:1 to areas (30_sources.json=sources+collect.max_age_days, 140_sites.json=genericweb/sites,
-    50_triage.json, 80_extract.json, 100_applicability.json, 110_suppliers.json, 60_llm.json, ...).
+    50_triage.json, 80_extract.json, 100_applicability.json, 110_suppliers.json, 60_llm.json,
+    20_schedule.json=schedule.timezone+schedule.jobs, 150_results.json=results.new_days/archive_after_days, ...).
     SEND: engine/config_store.py, the relevant config/defaults/*.json, web/config_meta.py
 
 [3] DB / SCHEMA
@@ -85,7 +92,8 @@ COMPONENT MAP
     Files: engine/db.py
     Key tables for collection: crawl_state(site_id PK, next_url, auth_json, last_run_at, total_collected,
     exhausted, total_estimate, note, detected_count); dismissed_tenders(external_id PK, source, reason,
-    dismissed_at). Analysis: verdicts(stage_name triage|applicability, verdict, score, reason,...), extractions,
+    dismissed_at). tenders.origin (TEXT, added via _migrate: incremental|backfill) feeds segmentation [16].
+    Analysis: verdicts(stage_name triage|applicability, verdict, score, reason,...), extractions,
     suppliers, verifications(stage,...), stage_runs (LLM call metadata per tender+stage), stage_events(tender_id,
     stage,seq,label,detail,created_at = the per-tender STEP TRACE, see [10]).
     SEND: engine/db.py
@@ -95,8 +103,10 @@ COMPONENT MAP
     Files: engine/collectors.py
     Contracts: register_collector(name); get_collector(name); CollectContext(config,cursor,source_config,params);
     CollectResult(items,cursor,fetched); CollectedItem(external_id,normalized,raw); Collector.collect(ctx).
-    run_collector(source,store,conn,params)->{status,fetched,new,too_old,cursor}. _store_item suppresses
-    dismissed_tenders and upserts tenders/raw_documents.
+    run_collector(source,store,conn,params)->{status,fetched,new,too_old,cursor}. _store_item(conn,source,
+    item,origin="incremental") suppresses dismissed_tenders, upserts tenders/raw_documents, and STAMPS
+    tenders.origin. _origin_for(params) maps mode->origin: params{mode:"backfill"}->"backfill" (Sites history
+    crawl), everything else ->"incremental" (daily/scheduled). This origin drives the New segment.
     AGE FILTER: config key collect.max_age_days (int days, 0=off). _parse_date(str)->ts (ISO YYYY-MM-DD,
     DD.MM.YYYY, DD/MM/YYYY). _tender_ref_ts(normalized)=max of published/deadline/enquiry_deadline. Items older
     than now-days are skipped BEFORE storage (undatable items are KEPT); counted as too_old.
@@ -192,7 +202,10 @@ COMPONENT MAP
     _store_extraction always stores a dict ({"raw":...} for non-dict) so the detail page never crashes.
     APPLICABILITY: _store_verdict never writes NULL (unknown fallback). analysis.py helpers:
     funnel_counts; run_triage/run_extract/run_applicability/run_suppliers/run_all (all take limit=analyze.
-    batch_size, default 50, set on the Analyze page); clear_irrelevant; wipe_collected; reset_analysis;
+    batch_size, default 50, set on the Analyze page, AND scope=one of SCOPES). SCOPES=("all","not_new",
+    "new","history","archive"): _scope_ids(conn,store,scope) restricts a run to a segment so a tester can
+    re-analyze old data ("not_new"/"history") without touching fresh daily finds ("new"). clear_irrelevant
+    (also scope-aware); wipe_collected; reset_analysis;
     requeue_failed; dedupe_mtender(conn) (merge MTender stage-copies by base ocid); clear_stage(conn,stage)
     (per-stage CASCADE clear: deletes that stage + all downstream stage data and rolls tender status back one
     step; wired to the ✕ clear buttons under each stage on /analyze).
@@ -203,6 +216,9 @@ COMPONENT MAP
     on a model-related API error, auto-retries once with llm.models["default"] (so a stale model string like a
     retired sonnet won't break a whole stage). Current default models live in config/defaults/60_llm.json
     (haiku-4-5 default/extract/suppliers; sonnet-5 applicability). If a stage 400s, check the model string.
+    Provider selection: select_provider(store).name -> "anthropic" | "stub". The API key is read via
+    engine/secrets.get_api_key (env var first, then ~/tenderengine/.env), NOT from config. Health/diagnostics
+    live in engine/health.py, surfaced on User Settings — see [16].
 
 [11] WEB — CORE
     Purpose: FastAPI app, auth/context, shared HTML render, styles.
@@ -211,8 +227,10 @@ COMPONENT MAP
     web/render.py (_e,_ts,_table,_layout,_login,_loose,_vclass,_help,NAV,source_url,...);
     web/styles.py (CSS dark theme).
     NAV (render.py) — current tabs: Digest, Results, Tenders, Triage, Extract, Applicability, Suppliers,
-    Analyze, Sites, User Settings, Config. REMOVED (were dev noise / folded into per-tender stage logs):
-    Verifications, Coverage, Runs, Stages, Audit.
+    Analyze, Sites, Schedule, User Settings, Config. REMOVED (were dev noise / folded into per-tender stage
+    logs): Verifications, Coverage, Runs, Stages, Audit.
+    Router wiring (server.py include_router): digest, config, sites, analyze, settings, stage, results,
+    schedule. Add a new page = new routes_*.py with router=APIRouter() + one include_router line here.
     source_url(source, external_id, portal): builds the MTender portal link from an ocds- external_id
     (default portal template sources.mtender.portal_url_template = https://mtender.gov.md/tenders/{ocid}).
     SEND: web/server.py, web/context.py, web/render.py, web/styles.py (only those you touch)
@@ -256,10 +274,28 @@ COMPONENT MAP
       (+AI-estimated), CPV, margin, reasoning, documents, dedicated Source link. Sort bar: by Deadline (default,
       soonest first, undated last; falls back to AI-estimated), Published (newest first), Enquiry, or CPV (groups
       cards into per-CPV-code blocks like other tender sites). Search by ID.
+      SEGMENT TABS (?tab=): New | General relevant | Archive | Base of all found. _TABS/_SEG_FOR_TAB map the
+      UI tab to a segment (new->new, general->history, archive->archive); "all" shows every collected tender.
+      Uses workflows.segments.partition/read_thresholds. New = only incremental (daily) finds within
+      results.new_days; historical back-fills skip New and land in General. POST /results/settings edits
+      results.new_days inline. Tabs show live counts; each has a one-line intro explaining the segment.
     web/routes_settings.py -> /user-settings: friendly per-option form (label + "?" tooltip + inline field, NO
       JSON) for the company profile (capabilities.profile split into fields), search keywords (editable
       word/weight rows + chip overview), and relevance/search tuning (bucket thresholds, value band,
-      collect.max_age_days, analyze.batch_size). Separate from the raw /config editor.
+      collect.max_age_days, analyze.batch_size). Separate from the raw /config editor. ALSO the operations
+      cockpit (sections built from engine/health.py + engine/secrets.py): _api_section (paste/replace
+      ANTHROPIC_API_KEY -> secrets.set_api_key writes ~/.env chmod 600; POST /user-settings/apikey; a "test
+      key" button hits check_api_key), _models_section (per-stage model IDs), _llm_section (llm_status: live
+      provider anthropic|stub, key_source, last failure + human-readable fix), _errors_section (recent_llm_
+      errors/error_counts) and a diagnostics list from collect_issues (stub-in-use, disabled sources, bad
+      timezone, unpriced models, analysis backlog, failed tenders). Spend widgets use health.spend/
+      spend_by_stage. classify_api_error turns raw Anthropic errors into a code (credit|auth|rate|model|
+      network|prompt) + a plain-language fix — reuse it anywhere you show an LLM error.
+    web/routes_schedule.py -> /schedule: friendly editor for the ONE collect job in schedule.jobs (kind==
+      "collect"). Fields: enabled, timezone (IANA, empty=server local), days-of-week pills (none=every day),
+      run times (comma HH:MM, max 24), sources (mtender=no tokens / genericweb=uses tokens), "analyse after
+      collect". Saves schedule.timezone + rewrites the collect job in schedule.jobs (other jobs preserved via
+      _other_jobs). Read-only mode shows a summary table. Validates tz + warns if enabled with no times. See [17].
     web/routes_config.py -> /config (raw config editing + /admin/restart).
     web/routes_analyze.py -> /analyze funnel + run buttons (per-stage run + ✕ clear cascade under each) + Retry
       failed + Clear rejected + "per run" batch input.
@@ -271,13 +307,81 @@ COMPONENT MAP
 
 [15] SUPPORT / MISC
     engine/http.py (get_text(url,timeout,retries,backoff,headers), get_json); engine/jsonutil.py (loads_loose);
-    engine/hashing.py (content_hash); engine/scheduler.py, engine/runner.py, engine/registry.py, engine/checks.py,
+    engine/hashing.py (content_hash); engine/runner.py, engine/registry.py, engine/checks.py,
     engine/contracts.py; tools/view.py, tools/config_cli.py; workflows/supervisor.py, workflows/demo.py.
+
+[16] SEGMENTATION + DATES + SECRETS + HEALTH (daily-collection support layer)
+    Purpose: everything that makes "daily finds vs history" and "is the LLM actually working" real. These are
+    library modules (no routes of their own); they surface on /results, /schedule and /user-settings.
+    Files:
+      workflows/segments.py -> classify_segment(origin,created_at,pub_date,deadline,...)->new|history|archive;
+        classify_row(row,store); partition(rows,store)->{new,history,archive}; read_thresholds(store)->
+        (new_days,archive_days). RULE: new only if origin=="incremental" AND found within results.new_days;
+        archive if deadline passed or aged past results.archive_after_days; otherwise history.
+      engine/lifecycle.py -> archive_reason(pub,deadline,found,...)->"deadline"|"age"|None (deadline wins if
+        present, else age vs archive_days); item_archive_reason(nj,...); collect_ceiling(store)=min of
+        collect.max_age_days and results.archive_after_days (the hard "don't even store older than this").
+      engine/dateparse.py -> robust multi-locale date parser (RO + RU month names, ISO w/ tz->Europe/Chisinau,
+        DD.MM.YYYY, YYYY/MM/DD, textual "12 iunie 2026"). parse()->DateInfo(date,time,kind); parse_date()->
+        date; to_iso/to_iso_dt/normalize_field/humanize. Diacritic-folded, dayfirst=True default. This is now
+        THE date entry point — prefer it over ad-hoc parsing in collectors/UI.
+      engine/secrets.py -> .env-backed API key store (NOT config, never committed). get_api_key (env var wins,
+        then ~/tenderengine/.env); set_api_key (writes .env chmod 600 + sets os.environ); key_source ->
+        environment|env file|missing; mask() for safe display; read_env/write_env_var generic helpers.
+      engine/health.py -> diagnostics used by User Settings: check_api_key (real 1-token ping); classify_api_
+        error (raw error -> code+fix, codes credit|auth|rate|model|network|prompt|unknown); llm_status;
+        recent_llm_errors/error_counts; spend/spend_by_stage (from stage_runs); collect_issues (the actionable
+        warning list). provider_in_use wraps llm.select_provider. STAGE_KEYS lists priced stages.
+    SEND: workflows/segments.py + engine/lifecycle.py for anything about New/History/Archive; engine/dateparse.py
+      for date bugs; engine/secrets.py + engine/health.py for API-key / LLM-status / diagnostics.
+
+[17] SCHEDULER (daily automatic collection — was OPEN TODO "STEP 2", now built)
+    Purpose: fire incremental collection (+ optional analysis) on a cron-like schedule, without re-detecting
+    each site. The engine is generic; the "collect" job is one entry in schedule.jobs.
+    Files:
+      engine/scheduler.py -> Scheduler(store, dispatch, logger).tick(now)/run_forever(interval=30). job_due
+        checks day-of-week + HH:MM against now_in_tz(store) (schedule.timezone, else server local) and a
+        per-job last_fired (job_key). Dispatch is a caller-supplied fn; scheduler itself knows nothing about
+        collect vs pipeline.
+      workflows/collect_jobs.py -> run_collect_job(job,store,conn,logger): for each job.sources
+        (default mtender+genericweb) calls run_collector(src,params={mode:"incremental"}) -> these land as
+        origin="incremental" (=> New segment); then if job.analyze, run_all(store,conn,limit=batch,scope="all").
+        Returns {new,analyze}.
+      app.py cmd_serve / cmd_web wire it: dispatch(pipeline,job) checks job.get("kind")=="collect" ->
+        run_collect_job, else falls back to the legacy pipeline runner. So `app.py serve` (or the web process)
+        is what actually executes the schedule.
+    The collect job shape (config schedule.jobs[]): {kind:"collect", sources:[...], days:[0..6], at:["HH:MM"],
+      analyze:bool, enabled:bool}. Edited via /schedule [13], defaults in config/defaults/20_schedule.json
+      (shipped disabled). Legacy pipeline jobs {pipeline,at,enabled} still coexist in the same list.
+    SEND: engine/scheduler.py + workflows/collect_jobs.py (+ app.py for the dispatch wiring, + web/routes_
+      schedule.py for the UI, + config/defaults/20_schedule.json).
+
+[18] INSTALL VERIFIER
+    verify_install.py (repo root, plain stdlib, run with the SERVER's python: `.venv/bin/python verify_install.py`
+    or `python3 verify_install.py`). Checks required files exist, py_compile each (catches Python-version syntax
+    errors before a restart — e.g. 3.12-only f-string escapes on the server's 3.10), imports the key modules,
+    and asserts freshness (origin param in _store_item, "not_new" in analysis.SCOPES). Run it after unpacking a
+    bundle, BEFORE `systemctl --user restart tenderengine`.
 
 =====================================================================================================
 KEY FACTS / DECISIONS
 =====================================================================================================
-- Collection and analysis are SEPARATE: collect only stores status="new"; analysis runs on demand (Analyze page).
+- Collection and analysis are SEPARATE: collect only stores status="new"; analysis runs on demand (Analyze page)
+  OR automatically after a scheduled collect job if job.analyze is on.
+- NEW vs HISTORY vs ARCHIVE is DERIVED, never stored as its own column. The only stored input is tenders.origin
+  (incremental|backfill). Daily/scheduled front-page checks = incremental => can be "New"; manual history crawls
+  from Sites = backfill => go straight to General/History. This lets testers hammer old data (scope=not_new/
+  history) without polluting the fresh New tab. Segment thresholds (results.new_days=7, archive_after_days=90)
+  are editable (User Settings / Results).
+- Daily automatic collection is a Scheduler on top of app.py serve (or the web process). The schedule is data:
+  one {kind:"collect"} entry in schedule.jobs, edited on /schedule. Ships DISABLED — nothing fires until Victor
+  turns it on and sets times. Generic-web collection spends tokens; MTender does not (surfaced in the UI).
+- The API key lives in ~/tenderengine/.env (engine/secrets), NOT in ConfigStore and NOT in git. Editable via
+  the API-key box on User Settings. Missing key => engine silently runs the STUB provider (fake text); the
+  User Settings diagnostics shout about this so it isn't mistaken for real analysis.
+- PYTHON 3.10 ON THE SERVER: the venv is 3.10.12. Do NOT use 3.11+/3.12-only syntax (e.g. backslash escapes
+  inside f-string expressions). run verify_install.py (it py_compiles every file) before restarting so a
+  version-only SyntaxError never reaches the live service.
 - mtender.md is a JS SPA: its server HTML renders only the first ~7 pages, then JS. Generic scraping caps ~60-70.
   RELIABLE MTender = the sources.mtender OCDS API (confirmed: 1520 collected). Do not scrape mtender.md.
 - SharePoint/UNDP doc libraries need login+browser -> analyzer flags needs_login; not scrapeable; use API/RSS.
@@ -294,13 +398,14 @@ KEY FACTS / DECISIONS
 
 OPEN TODOS
 ----------
-- STEP 2 (next up, not yet built): periodic incremental re-check per site. Needs a config key like
-  collect.incremental_interval_hours (per-site override, same pattern as engine/render) and a scheduler hook
-  (engine/scheduler.py) that calls run_collector("genericweb", params={mode:"incremental", site_id}) on that
-  cadence using the site's already-detected engine/render — no re-running detect_site_profile every cycle.
-  Optional refinement discussed but not built: if incremental yields 0 new tenders for N consecutive runs on
-  a site that used to have tenders, that's a good trigger to auto-rerun detect_site_profile (site may have
-  changed its rendering) rather than silently going stale.
+- DONE (was "STEP 2"): daily incremental collection now exists as the Scheduler + collect job (see [17],
+  /schedule). What's still NOT built from the original idea: PER-SITE cadence/override (current collect job
+  hits all sources together, not site-by-site), and the auto-heal trigger — if incremental yields 0 new
+  tenders for N consecutive runs on a site that used to produce them, auto-rerun detect_site_profile (site may
+  have changed rendering) instead of silently going stale. The scheduler currently runs genericweb globally
+  in incremental mode; a site_id-scoped variant would be the next refinement.
+- Run the live daily schedule for a while and confirm the New/General/Archive split behaves on real data
+  (segments are unit-tested but not yet battle-tested against a week of real incremental runs).
 - Fix/verify the analysis pipeline (triage->extract->applicability) on the MTender data.
 - Optional: dedicated UNDP API source (if a public feed exists) — note tenderhub.md/ro already aggregates a
   lot of UNDP/IOM/UIPAC postings and turned out to be plain HTML, may cover this need without a bespoke API.
