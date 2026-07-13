@@ -105,6 +105,16 @@ def sites_dedupe_mtender(request: Request):
     n = dedupe_mtender(request.state.conn)
     return _redir_sites(msg=f"MTender dedupe: merged {n} duplicate stage-copy tender(s)")
 
+
+@router.post("/sites/dedupe-docs")
+def sites_dedupe_docs(request: Request):
+    if request.state.readonly:
+        return _redir_sites(err="read-only mode")
+    from workflows.analysis import dedupe_documents_db
+    r = dedupe_documents_db(request.state.conn)
+    return _redir_sites(msg=f"Document dedupe: removed {r['documents_removed']} repeated "
+                            f"file(s) across {r['tenders_changed']} tender(s)")
+
 @router.post("/sites/engine-toggle")
 def sites_engine_toggle(request: Request):
     if request.state.readonly:

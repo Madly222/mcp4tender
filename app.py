@@ -342,6 +342,14 @@ def cmd_probe(conn, store, args):
     return 0
 
 
+def cmd_dedupe_docs(conn, store, args):
+    from workflows.analysis import dedupe_documents_db
+    r = dedupe_documents_db(conn, source=getattr(args, "source", None) or "mtender")
+    print(f"dedupe-docs: {r['documents_removed']} duplicate document(s) removed "
+          f"across {r['tenders_changed']} tender(s)")
+    return 0
+
+
 def main():
     p = argparse.ArgumentParser(description="tender engine")
     sub = p.add_subparsers(dest="command")
@@ -374,6 +382,8 @@ def main():
     psv.add_argument("--limit", type=int, default=None)
     pdg = sub.add_parser("digest")
     pdg.add_argument("--limit", type=int, default=None)
+    pdd = sub.add_parser("dedupe-docs")
+    pdd.add_argument("--source", default="mtender")
     args = p.parse_args()
 
     conn, store, seeded = bootstrap()
@@ -392,7 +402,7 @@ def main():
                "llm-test": cmd_llm_test, "read-doc": cmd_read_doc,
                "extract": cmd_extract, "applicability": cmd_applicability,
                "suppliers": cmd_suppliers, "supervise": cmd_supervise,
-               "digest": cmd_digest}.get(args.command, cmd_demo)
+               "digest": cmd_digest, "dedupe-docs": cmd_dedupe_docs}.get(args.command, cmd_demo)
     sys.exit(handler(conn, store, args))
 
 
