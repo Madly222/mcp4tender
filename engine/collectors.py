@@ -81,7 +81,11 @@ def _write_cursor(conn, source, cursor, count):
     conn.commit()
 
 
-def _store_item(conn, source, item: CollectedItem):
+def _origin_for(params):
+    return "backfill" if (params or {}).get("mode") == "backfill" else "incremental"
+
+
+def _store_item(conn, source, item: CollectedItem, origin="incremental"):
     now = time.time()
     if conn.execute("SELECT 1 FROM dismissed_tenders WHERE external_id = ?",
                     (item.external_id,)).fetchone():
@@ -99,9 +103,9 @@ def _store_item(conn, source, item: CollectedItem):
     if existing is None:
         conn.execute(
             "INSERT INTO tenders(source, external_id, content_hash, normalized_json, status, "
-            "created_at, updated_at) VALUES(?,?,?,?,?,?,?)",
+            "origin, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)",
             (source, item.external_id, chash,
-             json.dumps(item.normalized, ensure_ascii=False), "new", now, now),
+             json.dumps(item.normalized, ensure_ascii=False), "new", origin, now, now),
         )
         return True
     if existing["content_hash"] != chash:
@@ -165,9 +169,10 @@ def run_collector(source, store, conn, params=None):
         ctx = CollectContext(config=store, cursor=cursor_before, source_config=source_config,
                              params=params or {})
         result = collector.collect(ctx)
+        origin = _origin_for(params)
         new_count = 0
         for item in result.items:
-            if _store_item(conn, source, item):
+            if _store_item(conn, source, item, origin):
                 new_count += 1
         conn.commit()
         cursor_after = result.cursor if result.cursor is not None else cursor_before

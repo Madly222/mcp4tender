@@ -19,6 +19,7 @@ NAV = [
     ("/stage/suppliers", "Suppliers"),
     ("/analyze", "Analyze"),
     ("/sites", "Sites"),
+    ("/schedule", "Schedule"),
     ("/user-settings", "User Settings"),
     ("/config", "Config"),
 ]
