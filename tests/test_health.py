@@ -139,6 +139,44 @@ def _run(conn, stage, cost, tokens, ago_days=0):
     conn.commit()
 
 
+def _run_t(conn, tid, stage, cost, tokens, ago_days=0):
+    conn.execute("INSERT INTO stage_runs(run_id,tender_id,stage_name,status,started_at,tokens,cost)"
+                 " VALUES('r',?,?,'done',?,?,?)", (tid, stage, time.time() - ago_days*86400,
+                                                   tokens, cost))
+    conn.commit()
+
+
+def test_cost_per_tender_ranks_and_splits(tmp_path):
+    from engine.health import cost_per_tender
+    conn, _ = _db(tmp_path)
+    _run_t(conn, 1, "triage", 0.001, 100)
+    _run_t(conn, 1, "applicability", 0.05, 4000)
+    _run_t(conn, 2, "triage", 0.001, 100)
+    rows = cost_per_tender(conn, days=1, limit=10)
+    assert rows[0]["tender_id"] == 1
+    assert abs(rows[0]["cost"] - 0.051) < 1e-6
+    assert rows[0]["stages"][0]["stage"] == "applicability"  # sorted by cost desc
+
+
+def test_cost_report_totals_and_average(tmp_path):
+    from engine.health import cost_report
+    conn, _ = _db(tmp_path)
+    _run_t(conn, 1, "applicability", 0.02, 4000)
+    _run_t(conn, 2, "applicability", 0.02, 4000)
+    r = cost_report(conn, days=1)
+    assert r["tenders"] == 2
+    assert abs(r["total"]["cost"] - 0.04) < 1e-6
+    assert abs(r["avg_per_tender"] - 0.02) < 1e-6
+    assert r["by_stage"][0]["stage"] == "applicability"
+
+
+def test_cost_report_empty(tmp_path):
+    from engine.health import cost_report
+    conn, _ = _db(tmp_path)
+    r = cost_report(conn, days=1)
+    assert r["total"]["runs"] == 0 and r["avg_per_tender"] == 0.0
+
+
 def test_spend_windows(tmp_path):
     conn, store = _db(tmp_path)
     _run(conn, "extract", 0.50, 1000, ago_days=0)

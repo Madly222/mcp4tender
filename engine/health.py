@@ -28,10 +28,44 @@ def spend(conn, days=1):
 def spend_by_stage(conn, days=30):
     since = time.time() - days * 86400
     rows = conn.execute(
-        "SELECT stage_name, COALESCE(SUM(cost),0) c, COALESCE(SUM(tokens),0) t "
+        "SELECT stage_name, COALESCE(SUM(cost),0) c, COALESCE(SUM(tokens),0) t, COUNT(*) n "
         "FROM stage_runs WHERE started_at >= ? GROUP BY stage_name "
         "ORDER BY c DESC", (since,)).fetchall()
-    return [{"stage": r[0], "cost": r[1], "tokens": r[2]} for r in rows]
+    return [{"stage": r[0], "cost": r[1], "tokens": r[2], "runs": r[3]} for r in rows]
+
+
+def cost_per_tender(conn, days=1, limit=20):
+    """Most expensive tenders in the window, with a per-stage breakdown each.
+    This is the 'where did my money go' view."""
+    since = time.time() - days * 86400
+    totals = conn.execute(
+        "SELECT tender_id, COALESCE(SUM(cost),0) c, COALESCE(SUM(tokens),0) t, COUNT(*) n "
+        "FROM stage_runs WHERE started_at >= ? AND tender_id IS NOT NULL "
+        "GROUP BY tender_id ORDER BY c DESC LIMIT ?", (since, limit)).fetchall()
+    out = []
+    for tr in totals:
+        stages = conn.execute(
+            "SELECT stage_name, COALESCE(SUM(cost),0) c, COALESCE(SUM(tokens),0) t "
+            "FROM stage_runs WHERE tender_id=? AND started_at >= ? "
+            "GROUP BY stage_name ORDER BY c DESC", (tr[0], since)).fetchall()
+        out.append({"tender_id": tr[0], "cost": tr[1], "tokens": tr[2], "runs": tr[3],
+                    "stages": [{"stage": s[0], "cost": s[1], "tokens": s[2]} for s in stages]})
+    return out
+
+
+def cost_report(conn, days=1, top=15):
+    """One call for the whole cost picture over a window: total, by stage, top tenders,
+    and the average cost per tender so a spike is obvious at a glance."""
+    tot = spend(conn, days=days)
+    by_stage = spend_by_stage(conn, days=days)
+    per_tender = cost_per_tender(conn, days=days, limit=top)
+    n_tenders = conn.execute(
+        "SELECT COUNT(DISTINCT tender_id) FROM stage_runs "
+        "WHERE started_at >= ? AND tender_id IS NOT NULL",
+        (time.time() - days * 86400,)).fetchone()[0] or 0
+    avg = (tot["cost"] / n_tenders) if n_tenders else 0.0
+    return {"total": tot, "by_stage": by_stage, "per_tender": per_tender,
+            "tenders": n_tenders, "avg_per_tender": avg, "days": days}
 
 
 def _regain_date(msg):

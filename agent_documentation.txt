@@ -345,9 +345,16 @@ COMPONENT MAP
         then ~/tenderengine/.env); set_api_key (writes .env chmod 600 + sets os.environ); key_source ->
         environment|env file|missing; mask() for safe display; read_env/write_env_var generic helpers.
       engine/health.py -> diagnostics used by User Settings: check_api_key (real 1-token ping); classify_api_
-        error (raw error -> code+fix, codes credit|auth|rate|model|network|prompt|unknown); llm_status;
-        recent_llm_errors/error_counts; spend/spend_by_stage (from stage_runs); collect_issues (the actionable
-        warning list). provider_in_use wraps llm.select_provider. STAGE_KEYS lists priced stages.
+        error (raw error -> code+fix, codes credit|limit|auth|rate|model|network|prompt|unknown; BLOCKING_CODES
+        gates FAIL); llm_status; recent_llm_errors/error_counts; spend/spend_by_stage (from stage_runs;
+        spend_by_stage also returns per-stage run counts); collect_issues (the actionable warning list).
+        COST VISIBILITY: cost_per_tender(conn,days,limit)=top spenders each with a per-stage split;
+        cost_report(conn,days,top)=total + by_stage + per_tender + avg_per_tender in one call. Shown on
+        /analyze as "Cost (last 24h)"; tender detail run-log shows a per-tender total. COST DRIVER: stage
+        "applicability" defaults to claude-sonnet-5 (in $3/out $15) while all other stages are haiku-4-5
+        (in $1/out $5), so batch cost is applicability-dominated (~150 tenders ≈ $2.70 sonnet vs $0.90 haiku;
+        switch llm.models.applicability to haiku to cut ~67%). Cached calls (llm_cache) bill $0 in stage_runs.
+        provider_in_use wraps llm.select_provider. STAGE_KEYS lists priced stages.
     SEND: workflows/segments.py + engine/lifecycle.py for anything about New/History/Archive; engine/dateparse.py
       for date bugs; engine/secrets.py + engine/health.py for API-key / LLM-status / diagnostics.
 

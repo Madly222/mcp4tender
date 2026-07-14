@@ -153,8 +153,50 @@ def analyze(request: Request, msg: str = "", err: str = "", scope: str = "not_ne
 
     rows = [[_e(k), _e(v)] for k, v in sorted(f["by_status"].items())]
     body = (banner + cards + appl_line + scope_bar + controls
+            + _cost_report_html(conn)
             + '<h2>Tenders by status</h2>' + _table(["Status", "Count"], rows))
     return _layout(request, "Analyze", body)
+
+
+def _cost_report_html(conn):
+    from engine.health import cost_report
+    r = cost_report(conn, days=1, top=12)
+    tot = r["total"]
+    if not tot["runs"]:
+        return ('<h2>Cost (last 24h)</h2><p class="mut">No LLM calls in the last 24 hours. '
+                'Run an analysis and the per-tender and per-stage spend will appear here.</p>')
+
+    avg = r["avg_per_tender"]
+    head = (f'<div class="row" style="align-items:stretch;margin-bottom:10px">'
+            f'<div class="card" style="flex:1;text-align:center">'
+            f'<div style="font-size:24px;font-weight:700;color:var(--acc)">${tot["cost"]:.4f}</div>'
+            f'<div class="mut" style="font-size:12px">total, last 24h</div></div>'
+            f'<div class="card" style="flex:1;text-align:center">'
+            f'<div style="font-size:24px;font-weight:700">${avg:.4f}</div>'
+            f'<div class="mut" style="font-size:12px">avg per tender ({r["tenders"]} tenders)</div></div>'
+            f'<div class="card" style="flex:1;text-align:center">'
+            f'<div style="font-size:24px;font-weight:700">{tot["tokens"]:,}</div>'
+            f'<div class="mut" style="font-size:12px">tokens</div></div></div>')
+
+    stage_rows = [[_e(s["stage"]), f'${s["cost"]:.4f}', f'{s["tokens"]:,}', _e(s["runs"])]
+                  for s in r["by_stage"]]
+    by_stage = ('<h3 style="margin:14px 0 4px;font-size:14px">By stage &mdash; this is where a spike '
+                'usually hides (e.g. an expensive model on one stage)</h3>'
+                + _table(["Stage", "Cost", "Tokens", "Runs"], stage_rows))
+
+    trows = []
+    for t in r["per_tender"]:
+        split = ", ".join(f'{_e(s["stage"])} ${s["cost"]:.4f}' for s in t["stages"])
+        trows.append([f'<a href="/tender/{t["tender_id"]}">#{_e(t["tender_id"])}</a>',
+                      f'${t["cost"]:.4f}', f'{t["tokens"]:,}',
+                      f'<span class="mut" style="font-size:12px">{split}</span>'])
+    top = ('<h3 style="margin:14px 0 4px;font-size:14px">Most expensive tenders (last 24h)</h3>'
+           + _table(["Tender", "Cost", "Tokens", "Per-stage split"], trows))
+
+    return ('<h2>Cost (last 24h)</h2>'
+            '<p class="mut" style="margin-top:-4px">Measured from this engine\'s own run log '
+            '(stage_runs). Cached calls count as $0. If one stage or a few tenders dominate, '
+            'that is your spike.</p>' + head + by_stage + top)
 
 
 def _limit(request):
