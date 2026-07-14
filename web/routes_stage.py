@@ -194,16 +194,23 @@ def _run_log(conn, conf, tid):
     if not rows:
         return '<p class="mut">No run log entries yet for this tender.</p>'
     out = []
+    tot_cost = 0.0
+    tot_tok = 0
     for r in rows:
         dur = ""
         if r["finished_at"] and r["started_at"]:
             dur = f'{r["finished_at"] - r["started_at"]:.1f}s'
         err = _e((r["error"] or "")[:500])
+        tot_cost += r["cost"] or 0
+        tot_tok += r["tokens"] or 0
         out.append([_ts(r["started_at"]),
                     f'<span class="{_vclass(r["status"])}">{_e(r["status"])}</span>',
                     _e(r["tokens"]), f'${_e(round(r["cost"] or 0, 4))}', dur,
                     f'<span title="{_e(r["error"] or "")}" style="white-space:pre-wrap">{err}</span>'])
-    return _table(["When", "Status", "Tokens", "Cost", "Time", "Error / message"], out)
+    summary = (f'<p class="mut" style="margin:0 0 6px">This tender so far: '
+               f'<b>${tot_cost:.4f}</b> across {tot_tok:,} tokens '
+               f'({len(rows)} LLM run{"s" if len(rows) != 1 else ""}).</p>')
+    return summary + _table(["When", "Status", "Tokens", "Cost", "Time", "Error / message"], out)
 
 
 def _verif_log(conn, conf, tid):
