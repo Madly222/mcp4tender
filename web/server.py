@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from web import (assets, routes_analyze, routes_config, routes_digest, routes_schedule,
                  routes_settings, routes_sites, routes_stage, routes_results)
-from web.user import routes_home, routes_inbox, routes_qualified
+from web.user import routes_browse, routes_home, routes_inbox, routes_qualified
 from web.context import add_context_middleware, _expected_token
 from web.render import _login
 
@@ -70,4 +70,5 @@ def create_app(db_path):
     app.include_router(routes_home.router)
     app.include_router(routes_inbox.router)
     app.include_router(routes_qualified.router)
+    app.include_router(routes_browse.router)
     return app

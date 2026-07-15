@@ -11,7 +11,7 @@ REQUIRED = [
     "web/server.py", "web/render.py", "web/config_meta.py", "web/assets.py", "web/roles.py",
     "web/user/layout.py", "web/user/nav.py", "web/user/routes_home.py",
     "web/user/errors.py", "web/user/cards.py", "web/user/routes_inbox.py",
-    "web/user/routes_qualified.py",
+    "web/user/routes_qualified.py", "web/user/routes_browse.py",
     "workflows/work.py",
     "web/static/user/tokens.css", "web/static/user/base.css",
     "web/static/user/components.css",
