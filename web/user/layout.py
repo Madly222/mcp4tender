@@ -7,7 +7,7 @@ from web.render import _e
 from web.user.icons import icon
 from web.user.nav import NAV, is_on
 
-SHEETS = ("user/tokens.css", "user/base.css", "user/components.css")
+SHEETS = ("tokens.css", "user/base.css", "user/components.css")
 
 
 def _initials(text):

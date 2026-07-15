@@ -14,7 +14,7 @@ REQUIRED = [
     "web/user/routes_qualified.py", "web/user/routes_browse.py", "web/user/routes_tender.py", "web/user/routes_prefs.py",
     "engine/user_settings.py",
     "workflows/work.py",
-    "web/static/user/tokens.css", "web/static/user/base.css",
+    "web/static/tokens.css", "web/static/user/base.css",
     "web/static/user/components.css",
     "config/defaults/150_results.json", "config/defaults/20_schedule.json", "app.py",
 ]
@@ -63,8 +63,12 @@ from workflows.analysis import SCOPES
 if "not_new" not in SCOPES:
     print("STALE workflows/analysis.py"); sys.exit(1)
 from web.user.layout import SHEETS
-if "user/tokens.css" not in SHEETS:
+if "tokens.css" not in SHEETS:
     print("STALE web/user/layout.py"); sys.exit(1)
+from web.styles import CSS as _ADMIN_CSS
+if ":root{" in _ADMIN_CSS:
+    print("STALE web/styles.py: tokens must come from /static/tokens.css")
+    sys.exit(1)
 from engine import accounts
 if not hasattr(accounts, "set_role"):
     print("STALE engine/accounts.py"); sys.exit(1)

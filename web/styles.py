@@ -1,12 +1,4 @@
 CSS = """
-:root{
---bg:#0a0c10;--bg-2:#0f1318;--panel:#13171d;--panel-2:#191f27;
---line:#232b34;--line-2:#2e3742;--fg:#e6edf3;--mut:#8a96a4;--mut-2:#6b7682;
---acc:#6ea8fe;--acc-weak:rgba(110,168,254,.14);--acc-line:rgba(110,168,254,.35);
---ok:#3fb950;--ok-weak:rgba(63,185,80,.13);
---warn:#d6a23a;--warn-weak:rgba(214,162,58,.13);
---bad:#f0584b;--bad-weak:rgba(240,88,75,.13);
---chip:#1b222b;--r:12px;--r-sm:9px}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
 body{margin:0;background:var(--bg);color:var(--fg);
