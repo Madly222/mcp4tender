@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Request
 
 from web.user.counts import nav_counts, segment_counts
+from workflows import work
 from web.user.icons import icon
 from web.user.layout import render
 
@@ -37,4 +38,4 @@ def app_home(request: Request):
         'carry a work stage. The numbers above are live.</div></div>')
     return render(request, "Dashboard", body, heading="Today at a glance",
                   lede="What the daily check turned up and what is still open.",
-                  counts=nav_counts(conn, store))
+                  counts=nav_counts(conn, store, work.account_id(request)))

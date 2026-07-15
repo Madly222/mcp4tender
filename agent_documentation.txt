@@ -419,6 +419,26 @@ COMPONENT MAP
     SEND: engine/accounts.py + web/context.py + web/server.py (+ web/render.py for the form).
 
 [19] UI / FRONTEND CONVENTIONS (read this FIRST for any redesign work)
+    ROLES gate the two zones (engine/accounts.py, web/roles.py):
+      * accounts.role is 'admin' or 'user'. DEFAULT_ROLE='user'. accounts.is_admin(row) is the
+        only check you should write; role_of(row) tolerates a missing column.
+      * admin  -> everything, lands on "/" (Digest).
+      * user   -> ONLY /app*, /static/*, /login, /logout. Anything else returns 403 via
+        web/user/errors.denied(). "/" 303-redirects them to /app. Lands on /app after login.
+      * acct is None means TOKEN MODE (no accounts exist, legacy install): treated as full access,
+        lands on "/". Do not "fix" this into a lockout.
+      * Migration backfills EXISTING accounts to 'admin' (they had full access before roles, and a
+        blanket 'user' default would leave an install with zero admins). The FIRST account ever
+        created is forced to 'admin' for the same reason. set_role() refuses to demote the last
+        active admin and kills that account's sessions on demotion.
+      * CLI: app.py user add --login X --role admin|user | app.py user role --login X --role user
+    WORK STAGES (workflows/work.py, table tender_work) are the BUSINESS decision on a tender and
+    have nothing to do with tenders.status (that is the pipeline). Stages: inbox, qualified,
+    in_progress, submitted, won, lost, skipped. "inbox" is NOT stored - absence of a row means
+    inbox, so 11k collected tenders cost 0 rows. PK is (tender_id, account_id): the decision
+    belongs to the COMPANY, not the engine, which is why account_id is there before multi-tenancy
+    lands. account_id 0 = token mode. Use work.account_id(request) to get it; never read
+    request.state.account["id"] directly, it is None in token mode.
     TWO ZONES since the user-zone redesign. Know which one you are editing:
       * USER ZONE (/app*) — the end-user product. web/user/*.py + web/static/user/*.css, served
         through web/assets.py. Dark theme, sidebar+topbar shell, styled after a commercial tender
@@ -510,11 +530,17 @@ OPEN TODOS
   existing nginx sites or DNS while doing it — an earlier attempt to publish a subdomain accidentally pointed
   at the company mail host and had to be rolled back.
 - USER-ZONE REDESIGN, in progress. Step 2 (tokens + /static + shell + /app) is DONE. Remaining:
-  (3) tender_work table = the business stage of a tender (inbox/qualified/in_progress/submitted/
-  won/lost/skipped) — the pipeline status is NOT this; (4) /app/inbox on real data; (5)
-  /app/qualified; (6) real Dashboard + /app/search + /app/archive; (7) tender detail; (8) restyle
+  (3) roles + zone routing — DONE; (3b) MULTI-TENANCY, undecided, ask Victor before touching:
+  verdicts(tender_id,stage_name,...) has NO account dimension, and applicability answers "can WE do
+  this" against the GLOBAL capabilities.profile. So a second company would read verdicts computed
+  for Rapid Link. Real fix = account_id on verdicts+suppliers and per-account config overlay;
+  collect/extract stay shared (company-independent), triage/applicability/suppliers go per-account,
+  so the added LLM cost per company is applicability (~sonnet) + suppliers (~haiku), NOT the whole
+  pipeline. Do NOT ship per-account settings before this or the settings will silently do nothing;
+  (4) tender_work + (5) /app/inbox on real data — DONE; (6) /app/qualified (stage moves + notes);
+  (7) real Dashboard + /app/search + /app/archive; (8) tender detail; (9) restyle
   the admin skin onto the same tokens (values only, markup untouched, so the HTML-substring tests
-  keep passing) and flip "/" to the user zone. Read [19] first. Approved look: docs/user_prototype.html.
+  keep passing). Flipping "/" is already done via roles. Read [19] first. Approved look: docs/user_prototype.html.
   NOT built and deliberately out of scope: tasks, contracts, projects, per-person assignees (an
   account is a COMPANY, see [18], so no "assigned to" until that model changes).
 - COST: stage "applicability" runs on claude-sonnet-5 and dominates spend (~150 tenders ~ $2.70 vs ~$0.90 on

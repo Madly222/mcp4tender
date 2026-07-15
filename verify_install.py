@@ -8,8 +8,10 @@ REQUIRED = [
     "engine/db.py", "engine/collectors.py", "engine/scheduler.py",
     "workflows/segments.py", "workflows/analysis.py", "workflows/collect_jobs.py",
     "web/routes_results.py", "web/routes_analyze.py", "web/routes_schedule.py",
-    "web/server.py", "web/render.py", "web/config_meta.py", "web/assets.py",
+    "web/server.py", "web/render.py", "web/config_meta.py", "web/assets.py", "web/roles.py",
     "web/user/layout.py", "web/user/nav.py", "web/user/routes_home.py",
+    "web/user/errors.py", "web/user/cards.py", "web/user/routes_inbox.py",
+    "workflows/work.py",
     "web/static/user/tokens.css", "web/static/user/base.css",
     "web/static/user/components.css",
     "config/defaults/150_results.json", "config/defaults/20_schedule.json", "app.py",
@@ -61,5 +63,11 @@ if "not_new" not in SCOPES:
 from web.user.layout import SHEETS
 if "user/tokens.css" not in SHEETS:
     print("STALE web/user/layout.py"); sys.exit(1)
+from engine import accounts
+if not hasattr(accounts, "set_role"):
+    print("STALE engine/accounts.py"); sys.exit(1)
+from engine.db import SCHEMA_WORK
+if "tender_work" not in SCHEMA_WORK:
+    print("STALE engine/db.py"); sys.exit(1)
 print("versions OK")
 print("\nInstall looks good. Restart the service.")
