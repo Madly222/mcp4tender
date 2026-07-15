@@ -11,6 +11,7 @@ REQUIRED = [
     "web/server.py", "web/render.py", "web/config_meta.py", "web/assets.py", "web/roles.py",
     "web/user/layout.py", "web/user/nav.py", "web/user/routes_home.py",
     "web/user/errors.py", "web/user/cards.py", "web/user/routes_inbox.py",
+    "web/user/routes_qualified.py",
     "workflows/work.py",
     "web/static/user/tokens.css", "web/static/user/base.css",
     "web/static/user/components.css",
@@ -69,5 +70,6 @@ if not hasattr(accounts, "set_role"):
 from engine.db import SCHEMA_WORK
 if "tender_work" not in SCHEMA_WORK:
     print("STALE engine/db.py"); sys.exit(1)
+from workflows.work import ids_in  # noqa: F401
 print("versions OK")
 print("\nInstall looks good. Restart the service.")

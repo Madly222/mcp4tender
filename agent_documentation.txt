@@ -439,6 +439,10 @@ COMPONENT MAP
     belongs to the COMPANY, not the engine, which is why account_id is there before multi-tenancy
     lands. account_id 0 = token mode. Use work.account_id(request) to get it; never read
     request.state.account["id"] directly, it is None in token mode.
+    /app/qualified deliberately re-fetches tenders that FELL OUT of the relevance
+    filter (see the "missing" branch in routes_qualified): once a human kept a tender it
+    must never vanish because a re-run flipped its verdict to cannot. Test:
+    test_kept_tender_survives_a_verdict_change. Do not "simplify" that branch away.
     TWO ZONES since the user-zone redesign. Know which one you are editing:
       * USER ZONE (/app*) — the end-user product. web/user/*.py + web/static/user/*.css, served
         through web/assets.py. Dark theme, sidebar+topbar shell, styled after a commercial tender
@@ -537,7 +541,7 @@ OPEN TODOS
   collect/extract stay shared (company-independent), triage/applicability/suppliers go per-account,
   so the added LLM cost per company is applicability (~sonnet) + suppliers (~haiku), NOT the whole
   pipeline. Do NOT ship per-account settings before this or the settings will silently do nothing;
-  (4) tender_work + (5) /app/inbox on real data — DONE; (6) /app/qualified (stage moves + notes);
+  (4) tender_work + (5) /app/inbox on real data — DONE; (6) /app/qualified — DONE (tabs per stage, inline stage move + note, KPIs).
   (7) real Dashboard + /app/search + /app/archive; (8) tender detail; (9) restyle
   the admin skin onto the same tokens (values only, markup untouched, so the HTML-substring tests
   keep passing). Flipping "/" is already done via roles. Read [19] first. Approved look: docs/user_prototype.html.
