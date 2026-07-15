@@ -4,6 +4,7 @@ import time
 
 from fastapi import APIRouter, Request
 
+from engine import user_settings
 from web.render import _e
 from web.user import cards
 from web.user.counts import nav_counts
@@ -97,7 +98,8 @@ def search(request: Request, q: str = "", page: int = 1):
 def archive(request: Request, q: str = ""):
     conn, store = request.state.conn, request.state.store
     rows = conn.execute(SELECT + " LIMIT 3000").fetchall()
-    aged = partition(rows, store)["archive"]
+    aged = partition(rows, user_settings.view(conn, store,
+                                              work.account_id(request)))["archive"]
     if q:
         needle = q.lower()
         aged = [r for r in aged

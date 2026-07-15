@@ -152,6 +152,13 @@ CREATE TABLE IF NOT EXISTS tender_work (
     PRIMARY KEY (tender_id, account_id)
 );
 CREATE INDEX IF NOT EXISTS idx_tender_work_stage ON tender_work(account_id, stage);
+CREATE TABLE IF NOT EXISTS account_settings (
+    account_id INTEGER NOT NULL,
+    key TEXT NOT NULL,
+    value TEXT,
+    updated_at REAL,
+    PRIMARY KEY (account_id, key)
+);
 """
 
 

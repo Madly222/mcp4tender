@@ -149,3 +149,10 @@ td select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-weak)}
 .tlist li{line-height:1.5}
 .tlist .mut{font-size:12.5px;margin-top:2px}
 a.chip.plain:hover{color:var(--acc);text-decoration:none}
+.pref{padding:13px 0;border-bottom:1px solid var(--line)}
+.pref:first-child{padding-top:0}
+.pref:last-child{border-bottom:0;padding-bottom:0}
+.pref-h{display:flex;align-items:center;gap:9px;margin-bottom:8px}
+.pref-h label{font-size:13.5px;font-weight:600}
+.pref-b{display:flex;align-items:center;gap:9px}
+.pref-help{color:var(--mut);font-size:12.5px;margin-top:7px;line-height:1.5}
