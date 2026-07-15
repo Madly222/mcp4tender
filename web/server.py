@@ -3,8 +3,9 @@ from __future__ import annotations
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from web import (routes_analyze, routes_config, routes_digest, routes_schedule,
+from web import (assets, routes_analyze, routes_config, routes_digest, routes_schedule,
                  routes_settings, routes_sites, routes_stage, routes_results)
+from web.user import routes_home
 from web.context import add_context_middleware, _expected_token
 from web.render import _login
 
@@ -12,6 +13,7 @@ from web.render import _login
 def create_app(db_path):
     app = FastAPI(title="TenderEngine Web")
     add_context_middleware(app, db_path)
+    app.include_router(assets.router)
 
     @app.get("/healthz")
     def healthz():
@@ -64,4 +66,5 @@ def create_app(db_path):
     app.include_router(routes_stage.router)
     app.include_router(routes_results.router)
     app.include_router(routes_schedule.router)
+    app.include_router(routes_home.router)
     return app

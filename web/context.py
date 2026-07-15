@@ -58,7 +58,7 @@ def _accounts_on(conn):
 def add_context_middleware(app, db_path):
     @app.middleware("http")
     async def context(request, call_next):
-        if request.url.path == "/healthz":
+        if request.url.path == "/healthz" or request.url.path.startswith("/static/"):
             return await call_next(request)
         conn, store = _open(db_path)
         request.state.conn = conn
