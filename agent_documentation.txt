@@ -466,6 +466,12 @@ COMPONENT MAP
     archive_after_days). NEVER add keywords/capabilities/suppliers to KEYS: they decide
     which verdicts get computed, and verdicts are shared - that is 3b, not a settings row.
     TWO ZONES since the user-zone redesign. Know which one you are editing:
+      * TOKENS ARE SHARED: web/static/tokens.css is the ONLY :root in the project. Both zones
+        link it (user via layout.SHEETS, admin via render._tokens()). styles.py must NOT contain
+        a :root - verify_install fails if it does. The admin's old names survive as aliases at the
+        bottom of tokens.css: --panel/--panel-2/--chip map onto --surface/-2/-3 and --bg-2 maps
+        onto --bg (it is the INPUT background and must stay darker than the panel it sits on -
+        aliasing it to --surface makes every field vanish into its card).
       * USER ZONE (/app*) — the end-user product. web/user/*.py + web/static/user/*.css, served
         through web/assets.py. Dark theme, sidebar+topbar shell, styled after a commercial tender
         portal (see docs/user_prototype.html for the approved look). CSS lives in real .css files
@@ -567,7 +573,8 @@ OPEN TODOS
   (7) Dashboard on real counters + /app/search + /app/archive — DONE. Remaining:
   (8) tender detail page — DONE; (9) /app/preferences with per-account VIEW settings —
   DONE (this is the honest half of 3b: storage + overlay exist, verdicts still shared).
-  Remaining: (10) restyle
+  (10) admin restyled onto the shared tokens — DONE. Remaining: MOBILE (the user zone
+  hides the sidebar under 900px with no replacement nav — /app is unusable on a phone)
   the admin skin onto the same tokens (values only, markup untouched, so the HTML-substring tests
   keep passing). Flipping "/" is already done via roles. Read [19] first. Approved look: docs/user_prototype.html.
   NOT built and deliberately out of scope: tasks, contracts, projects, per-person assignees (an

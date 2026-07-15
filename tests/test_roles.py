@@ -73,7 +73,7 @@ def test_user_is_kept_out_of_admin_pages(tmp_path, monkeypatch):
         assert r.status_code == 403, path
         assert "Not available on your account" in r.text
     assert c.get("/app").status_code == 200
-    assert c.get("/static/user/tokens.css").status_code == 200
+    assert c.get("/static/tokens.css").status_code == 200
 def test_admin_keeps_full_access(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"r6.db")

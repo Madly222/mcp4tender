@@ -117,6 +117,12 @@ def _bool_dot(value):
             f'{"on" if value else "off"}')
 
 
+def _tokens():
+    from web.assets import asset_version
+    return ('<link rel="stylesheet" href="/static/tokens.css?v=%s">'
+            % asset_version("tokens.css"))
+
+
 def _layout(request, title, body):
     store = request.state.store
     brand = _e(store.get("web.title", "TenderEngine"))
@@ -134,7 +140,8 @@ def _layout(request, title, body):
     return HTMLResponse(
         f"<!doctype html><html><head><meta charset=utf-8>"
         f"<meta name=viewport content='width=device-width,initial-scale=1'>"
-        f"<title>{brand} &middot; {_e(title)}</title><style>{CSS}</style></head><body>"
+        f"<title>{brand} &middot; {_e(title)}</title>{_tokens()}"
+        f"<style>{CSS}</style></head><body>"
         f"<header><span class=brand>{brand}</span><nav>{nav}</nav></header>"
         f"<main><h1>{_e(title)}{ro}</h1>{body}</main>"
         f"<footer>{brand} &middot; phase 8 web UI</footer></body></html>"
@@ -168,7 +175,8 @@ def _login(request, error=""):
     return HTMLResponse(
         f"<!doctype html><html><head><meta charset=utf-8>"
         f"<meta name=viewport content='width=device-width,initial-scale=1'>"
-        f"<title>{brand} &middot; login</title><style>{CSS}</style></head><body>"
+        f"<title>{brand} &middot; login</title>{_tokens()}"
+        f"<style>{CSS}</style></head><body>"
         f"<main style='max-width:380px;margin-top:12vh'>"
         f"<div class=card><h1>{brand}</h1>{msg}"
         f"<form method=post action='/login'>"

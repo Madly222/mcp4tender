@@ -22,10 +22,10 @@ def test_static_is_served_and_cached(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"s.db"); conn.close()
     c = TestClient(create_app(p))
-    r = c.get("/static/user/tokens.css")
+    r = c.get("/static/tokens.css")
     assert r.status_code == 200 and r.headers["content-type"].startswith("text/css")
     assert "--acc:#4f8cff" in r.text
-    again = c.get("/static/user/tokens.css", headers={"if-none-match": r.headers["etag"]})
+    again = c.get("/static/tokens.css", headers={"if-none-match": r.headers["etag"]})
     assert again.status_code == 304
 def test_static_rejects_traversal_and_missing(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
@@ -46,10 +46,24 @@ def test_shell_renders_with_nav_and_counts(tmp_path, monkeypatch):
     _add(conn,"h1",json.dumps({"title":"OldOne"}),origin="backfill",created_at=_ago(30))
     conn.close()
     h = TestClient(create_app(p)).get("/app").text
-    assert 'class="shell"' in h and 'href="/static/user/tokens.css' in h
+    assert 'class="shell"' in h and 'href="/static/tokens.css' in h
     assert "Tender inbox" in h and "Qualified" in h and "Engine admin" in h
     assert "Today at a glance" in h
     assert '<span class="badge num">1</span>' in h
+def test_admin_shares_the_same_tokens(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    p, conn = _fresh(tmp_path,"tok.db"); conn.close()
+    c = TestClient(create_app(p))
+    for path in ("/", "/config", "/results", "/app"):
+        h = c.get(path).text
+        assert 'href="/static/tokens.css' in h, path
+        assert ":root{" not in h, path
+    css = c.get("/static/tokens.css").text
+    for alias in ("--panel:var(--surface)", "--chip:var(--surface-3)",
+                  "--panel-2:var(--surface-2)"):
+        assert alias in css, alias
+    assert "--bg-2:var(--bg)" in css
+    assert "--bg-2:var(--surface)" not in css
 def test_admin_pages_untouched(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"b.db"); conn.close()

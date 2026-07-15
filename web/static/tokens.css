@@ -1,0 +1,15 @@
+:root{
+--bg:#0a0d12;--surface:#111620;--surface-2:#161d28;--surface-3:#1c2531;
+--line:#232c3a;--line-2:#2f3a4a;
+--fg:#e8eef6;--mut:#8b98a9;--mut-2:#66717f;
+--acc:#4f8cff;--acc-weak:rgba(79,140,255,.13);--acc-line:rgba(79,140,255,.38);--acc-fg:#fff;
+--ok:#3fb950;--ok-weak:rgba(63,185,80,.13);--ok-line:rgba(63,185,80,.3);
+--warn:#e0a336;--warn-weak:rgba(224,163,54,.13);--warn-line:rgba(224,163,54,.3);
+--bad:#f0584b;--bad-weak:rgba(240,88,75,.13);--bad-line:rgba(240,88,75,.3);
+--r:10px;--r-sm:7px;--r-lg:14px;
+--sidebar-w:236px;--topbar-h:62px;
+--font:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Inter,Arial;
+--mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+--bg-2:var(--bg);--panel:var(--surface);--panel-2:var(--surface-2);
+--chip:var(--surface-3);
+}
