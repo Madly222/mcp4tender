@@ -77,14 +77,14 @@ def _strips(openrows, waiting, now):
     return f'<div class="strips">{"".join(out)}</div>' if out else ""
 
 
-def _open_table(openrows, now):
+def _open_table(openrows, now, portal=None):
     if not openrows:
         return ('<div class="card"><div class="card-h">'
                 f'{icon("check-circle")}<h2>Open work</h2></div>'
                 '<div class="empty">Nothing in progress. Start from the '
                 '<a href="/app/inbox">inbox</a>.</div></div>')
     body = "".join(
-        "<tr>" + cards.cell_tender(r, cards.nj_of(r)) + cards.cell_match(r)
+        "<tr>" + cards.cell_tender(r, cards.nj_of(r), portal) + cards.cell_match(r)
         + cards.cell_when(r, cards.nj_of(r), now) + "</tr>"
         for _, r, _raw, _ts in openrows[:6])
     return ('<div class="card"><div class="card-h">'

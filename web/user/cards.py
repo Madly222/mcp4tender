@@ -14,6 +14,10 @@ VERDICT_CHIP = {"can": "ok", "partial": "warn", "cannot": "bad"}
 VERDICT_CLASS = {"can": "m-can", "partial": "m-part", "cannot": "m-cannot"}
 
 
+def portal_of(store):
+    return (store.get("sources.mtender", {}) or {}).get("portal_url_template")
+
+
 def nj_of(row):
     nj = _loose(row["normalized_json"])
     return nj if isinstance(nj, dict) else {}
@@ -71,8 +75,10 @@ def cell_ref(row):
 def cell_tender(row, nj, portal=None):
     url = source_url(row["source"], row["external_id"], portal)
     title = _e(nj.get("title") or "(untitled)")
-    href = f' href="{_e(url)}" target=_blank' if url else ' href="#"'
+    href = f' href="/app/tender/{row["id"]}"'
     tags = []
+    if url:
+        tags.append(f'<a class="chip plain" href="{_e(url)}" target=_blank>portal</a>')
     cpv = nj.get("cpv") or []
     if isinstance(cpv, list) and cpv and isinstance(cpv[0], dict):
         txt = " ".join(str(x) for x in (cpv[0].get("id"), cpv[0].get("description")) if x)

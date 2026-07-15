@@ -105,7 +105,7 @@ def qualified(request: Request, stage: str = ""):
             f'<tr><form method="post" action="/app/qualified/{r["id"]}/save" '
             'style="display:contents">'
             + cards.cell_stage_since(info.get(r["id"]), now)
-            + cards.cell_tender(r, cards.nj_of(r))
+            + cards.cell_tender(r, cards.nj_of(r), cards.portal_of(store))
             + cards.cell_value(cards.nj_of(r))
             + cards.cell_match(r)
             + cards.cell_when(r, cards.nj_of(r), now)
