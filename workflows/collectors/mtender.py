@@ -17,7 +17,7 @@ def base_ocid(ocid):
 
 
 def _initial_cursor(backfill_days):
-    start = dt.datetime.utcnow() - dt.timedelta(days=int(backfill_days))
+    start = dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=int(backfill_days))
     return start.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

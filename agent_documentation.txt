@@ -418,6 +418,14 @@ COMPONENT MAP
       otherwise the session cookie is sent over plain HTTP).
     SEND: engine/accounts.py + web/context.py + web/server.py (+ web/render.py for the form).
 
+[18b] PYTHON VERSION TRAP: production runs 3.10, agents usually develop on 3.12. Consequences:
+    * dt.UTC and datetime.UTC are 3.11+. Use dt.timezone.utc. Same for any 3.11/3.12-only syntax -
+      verify_install.py py_compiles everything for exactly this reason; run it before restarting.
+    * DeprecationWarnings you see on 3.12 are INVISIBLE on 3.10, so "no warnings on the server"
+      does not mean clean. datetime.utcnow() was the one instance and is fixed.
+    * The lone StarletteDeprecationWarning about httpx/httpx2 comes from starlette's own import
+      line under pytest, is not our code, and never loads in production. Leave it.
+
 [19] UI / FRONTEND CONVENTIONS (read this FIRST for any redesign work)
     ROLES gate the two zones (engine/accounts.py, web/roles.py):
       * accounts.role is 'admin' or 'user'. DEFAULT_ROLE='user'. accounts.is_admin(row) is the
