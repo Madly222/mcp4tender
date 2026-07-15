@@ -38,10 +38,11 @@ def stages_for(conn, tender_ids, acct_id):
         return {}
     marks = ",".join("?" * len(tender_ids))
     rows = conn.execute(
-        f"SELECT tender_id, stage, note FROM tender_work "
+        f"SELECT tender_id, stage, note, updated_at FROM tender_work "
         f"WHERE account_id=? AND tender_id IN ({marks})",
         (acct_id, *tender_ids)).fetchall()
-    return {r["tender_id"]: {"stage": r["stage"], "note": r["note"]} for r in rows}
+    return {r["tender_id"]: {"stage": r["stage"], "note": r["note"],
+                             "updated_at": r["updated_at"]} for r in rows}
 
 
 def set_stage(conn, tender_id, acct_id, stage, note=None):
@@ -70,6 +71,16 @@ def counts(conn, acct_id):
         if r["stage"] in out:
             out[r["stage"]] = r["n"]
     return out
+
+
+def ids_in(conn, acct_id, stages):
+    if not stages:
+        return []
+    marks = ",".join("?" * len(stages))
+    rows = conn.execute(
+        f"SELECT tender_id FROM tender_work WHERE account_id=? AND stage IN ({marks})",
+        (acct_id, *stages)).fetchall()
+    return [r["tender_id"] for r in rows]
 
 
 def decided_ids(conn, acct_id):

@@ -131,3 +131,10 @@ font-size:13px;box-shadow:inset 0 0 0 1px var(--line)}
 .mini .mt b{display:block;font-size:13px;font-weight:580;white-space:nowrap;
 overflow:hidden;text-overflow:ellipsis}
 .mini .mt span{color:var(--mut);font-size:12px}
+.note-in{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);
+color:var(--fg);padding:6px 9px;font:400 12.5px/1.4 var(--font);outline:none}
+.note-in::placeholder{color:var(--mut-2)}
+.note-in:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-weak)}
+td select{background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);
+color:var(--fg);padding:6px 8px;font:400 12.5px/1.4 var(--font);outline:none;max-width:118px}
+td select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-weak)}

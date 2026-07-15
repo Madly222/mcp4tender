@@ -149,3 +149,37 @@ def cell_decide(row, back):
             f'<button class="icon-btn no" name="stage" value="skipped" '
             f'title="Skip">{icon("x", 2.5)}</button></form>'
             "</div></td>")
+
+
+def since_of(info, now):
+    if not info or not info.get("updated_at"):
+        return ""
+    days = int((now - info["updated_at"]) // 86400)
+    if days <= 0:
+        return '<div class="t-doc-n" style="margin-top:6px">today</div>'
+    unit = "day" if days == 1 else "days"
+    return f'<div class="t-doc-n" style="margin-top:6px">{days} {unit} ago</div>'
+
+
+def cell_stage_since(info, now):
+    stage = info["stage"] if info else "inbox"
+    return (f'<td><span class="chip {work.CHIP.get(stage, "")}">{_e(work.LABELS[stage])}</span>'
+            f"{since_of(info, now)}</td>")
+
+
+def cell_note(info):
+    note = (info or {}).get("note") or ""
+    return ('<td><input type="text" name="note" class="note-in" '
+            f'value="{_e(note)}" placeholder="Add a note"></td>')
+
+
+def cell_move(row, info, back):
+    stage = (info or {}).get("stage") or "inbox"
+    opts = "".join(
+        f'<option value="{s}"{" selected" if s == stage else ""}>{_e(work.LABELS[s])}</option>'
+        for s in work.STAGES)
+    return ('<td><div class="acts">'
+            f'<select name="stage">{opts}</select>'
+            f'<button class="btn sm" name="save" value="1">Save</button>'
+            f'<input type="hidden" name="back" value="{_e(back)}">'
+            "</div></td>")
