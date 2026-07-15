@@ -11,7 +11,8 @@ REQUIRED = [
     "web/server.py", "web/render.py", "web/config_meta.py", "web/assets.py", "web/roles.py",
     "web/user/layout.py", "web/user/nav.py", "web/user/routes_home.py",
     "web/user/errors.py", "web/user/cards.py", "web/user/routes_inbox.py",
-    "web/user/routes_qualified.py", "web/user/routes_browse.py", "web/user/routes_tender.py",
+    "web/user/routes_qualified.py", "web/user/routes_browse.py", "web/user/routes_tender.py", "web/user/routes_prefs.py",
+    "engine/user_settings.py",
     "workflows/work.py",
     "web/static/user/tokens.css", "web/static/user/base.css",
     "web/static/user/components.css",
@@ -71,5 +72,8 @@ from engine.db import SCHEMA_WORK
 if "tender_work" not in SCHEMA_WORK:
     print("STALE engine/db.py"); sys.exit(1)
 from workflows.work import ids_in  # noqa: F401
+from engine.user_settings import KEYS as _UK
+if "results.new_days" not in _UK:
+    print("STALE engine/user_settings.py"); sys.exit(1)
 print("versions OK")
 print("\nInstall looks good. Restart the service.")

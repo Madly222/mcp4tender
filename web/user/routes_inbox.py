@@ -5,6 +5,7 @@ import time
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 
+from engine import user_settings
 from web.render import _e
 from web.user import cards
 from web.user.counts import nav_counts
@@ -86,7 +87,7 @@ def inbox(request: Request, q: str = "", match: str = ""):
     acct_id = work.account_id(request)
     portal = cards.portal_of(store)
     rows = conn.execute(SELECT + " LIMIT 3000").fetchall()
-    buckets = partition(rows, store)
+    buckets = partition(rows, user_settings.view(conn, store, acct_id))
     decided = work.decided_ids(conn, acct_id)
     fresh = [r for r in buckets["new"] if r["id"] not in decided]
     shown = [r for r in fresh if _keep(r, q, match)]

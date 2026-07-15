@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from engine import user_settings
 from workflows.segments import partition
 
 _RELEVANT = (
@@ -12,21 +13,22 @@ _RELEVANT = (
     "OR (av.verdict IS NULL AND tv.verdict='relevant') LIMIT 3000")
 
 
-def segment_counts(conn, store):
+def segment_counts(conn, store, acct_id=0):
     rows = conn.execute(_RELEVANT).fetchall()
-    buckets = partition(rows, store)
+    buckets = partition(rows, user_settings.view(conn, store, acct_id))
     return {s: len(v) for s, v in buckets.items()}
 
 
 def nav_counts(conn, store, acct_id=0):
     from workflows import work
     try:
-        seg = segment_counts(conn, store)
+        seg = segment_counts(conn, store, acct_id)
         decided = work.decided_ids(conn, acct_id)
         w = work.counts(conn, acct_id)
     except Exception:
         return {}
-    fresh = [r for r in partition(conn.execute(_RELEVANT).fetchall(), store)["new"]
+    view = user_settings.view(conn, store, acct_id)
+    fresh = [r for r in partition(conn.execute(_RELEVANT).fetchall(), view)["new"]
              if r["id"] not in decided]
     out = {"inbox": len(fresh)}
     out.update({k: v for k, v in w.items() if v})

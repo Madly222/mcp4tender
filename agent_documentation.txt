@@ -459,6 +459,12 @@ COMPONENT MAP
     with a separate small 'portal' chip for the external link. source_url() only returns
     a URL for mtender ocids; pass cards.portal_of(store) so the configured
     sources.mtender.portal_url_template is honoured, exactly like the admin zone does.
+    PER-ACCOUNT SETTINGS (engine/user_settings.py, table account_settings) work by OVERLAY,
+    not by forking segments.py: user_settings.view(conn, store, acct_id) returns either the
+    global store or an Overlay that quacks like it, so partition()/read_thresholds() stay
+    untouched. Only KEYS may be overridden and every one is a VIEW knob (new_days,
+    archive_after_days). NEVER add keywords/capabilities/suppliers to KEYS: they decide
+    which verdicts get computed, and verdicts are shared - that is 3b, not a settings row.
     TWO ZONES since the user-zone redesign. Know which one you are editing:
       * USER ZONE (/app*) — the end-user product. web/user/*.py + web/static/user/*.css, served
         through web/assets.py. Dark theme, sidebar+topbar shell, styled after a commercial tender
@@ -559,7 +565,9 @@ OPEN TODOS
   pipeline. Do NOT ship per-account settings before this or the settings will silently do nothing;
   (4) tender_work + (5) /app/inbox on real data — DONE; (6) /app/qualified — DONE (tabs per stage, inline stage move + note, KPIs);
   (7) Dashboard on real counters + /app/search + /app/archive — DONE. Remaining:
-  (8) tender detail page — DONE. Remaining: (9) restyle
+  (8) tender detail page — DONE; (9) /app/preferences with per-account VIEW settings —
+  DONE (this is the honest half of 3b: storage + overlay exist, verdicts still shared).
+  Remaining: (10) restyle
   the admin skin onto the same tokens (values only, markup untouched, so the HTML-substring tests
   keep passing). Flipping "/" is already done via roles. Read [19] first. Approved look: docs/user_prototype.html.
   NOT built and deliberately out of scope: tasks, contracts, projects, per-person assignees (an
