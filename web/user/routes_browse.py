@@ -45,11 +45,11 @@ def _pager(action, q, page, total):
             f'{nxt or "<span></span>"}</div>')
 
 
-def _table(rows, now, decide_back=None):
+def _table(rows, now, decide_back=None, portal=None):
     body = []
     for r in rows:
         nj = cards.nj_of(r)
-        cells = (cards.cell_ref(r) + cards.cell_tender(r, nj) + cards.cell_value(nj)
+        cells = (cards.cell_ref(r) + cards.cell_tender(r, nj, portal) + cards.cell_value(nj)
                  + cards.cell_match(r) + cards.cell_when(r, nj, now))
         if decide_back is not None:
             cells += cards.cell_decide(r, decide_back)
@@ -78,7 +78,8 @@ def search(request: Request, q: str = "", page: int = 1):
     back = "/app/search" + (f"?q={q}&page={page}" if q else f"?page={page}")
 
     if rows:
-        inner = _table(rows, now, decide_back=back) + _pager("/app/search", q, page, total)
+        inner = (_table(rows, now, decide_back=back, portal=cards.portal_of(store))
+                 + _pager("/app/search", q, page, total))
     elif q:
         inner = f'<div class="empty">Nothing in the base matches “{_e(q)}”.</div>'
     else:
@@ -104,7 +105,7 @@ def archive(request: Request, q: str = ""):
                              f"{cards.nj_of(r).get('buyer') or ''}".lower()]
     now = time.time()
     if aged:
-        inner = _table(aged[:200], now)
+        inner = _table(aged[:200], now, portal=cards.portal_of(store))
     elif q:
         inner = f'<div class="empty">Nothing in the archive matches “{_e(q)}”.</div>'
     else:

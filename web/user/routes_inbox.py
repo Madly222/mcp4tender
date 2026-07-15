@@ -84,6 +84,7 @@ def inbox_stage(request: Request, tender_id: int, stage: str = Form("qualified")
 def inbox(request: Request, q: str = "", match: str = ""):
     conn, store = request.state.conn, request.state.store
     acct_id = work.account_id(request)
+    portal = cards.portal_of(store)
     rows = conn.execute(SELECT + " LIMIT 3000").fetchall()
     buckets = partition(rows, store)
     decided = work.decided_ids(conn, acct_id)
@@ -93,7 +94,7 @@ def inbox(request: Request, q: str = "", match: str = ""):
 
     if shown:
         body_rows = "".join(
-            "<tr>" + cards.cell_ref(r) + cards.cell_tender(r, cards.nj_of(r))
+            "<tr>" + cards.cell_ref(r) + cards.cell_tender(r, cards.nj_of(r), portal)
             + cards.cell_value(cards.nj_of(r)) + cards.cell_docs(cards.nj_of(r))
             + cards.cell_match(r) + cards.cell_when(r, cards.nj_of(r), now)
             + cards.cell_decide(r, request.url.path + ("?" + str(request.url.query)

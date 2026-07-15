@@ -138,3 +138,14 @@ color:var(--fg);padding:6px 9px;font:400 12.5px/1.4 var(--font);outline:none}
 td select{background:var(--bg);border:1px solid var(--line);border-radius:var(--r-sm);
 color:var(--fg);padding:6px 8px;font:400 12.5px/1.4 var(--font);outline:none;max-width:118px}
 td select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-weak)}
+.fact{display:flex;gap:14px;padding:9px 0;border-bottom:1px solid var(--line);font-size:13px}
+.fact:last-child{border-bottom:0;padding-bottom:0}
+.fact:first-child{padding-top:0}
+.fk{color:var(--mut);flex:none;width:118px}
+.fv{flex:1;min-width:0;word-break:break-word}
+.fv .chip{margin:0 4px 4px 0}
+.reason{color:var(--fg);font-size:13.5px;line-height:1.65;white-space:pre-wrap}
+.tlist{margin:0;padding-left:17px;display:flex;flex-direction:column;gap:6px}
+.tlist li{line-height:1.5}
+.tlist .mut{font-size:12.5px;margin-top:2px}
+a.chip.plain:hover{color:var(--acc);text-decoration:none}
