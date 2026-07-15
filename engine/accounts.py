@@ -20,6 +20,8 @@ ITERATIONS = 240_000
 SESSION_DAYS = 30
 MAX_FAILS = 10          # failed logins from one IP ...
 LOCK_WINDOW = 900       # ... within this many seconds -> locked out
+ROLES = ("admin", "user")
+DEFAULT_ROLE = "user"
 
 
 # ---------------------------------------------------------------- passwords
@@ -60,17 +62,57 @@ def list_all(conn):
     return conn.execute("SELECT * FROM accounts ORDER BY login").fetchall()
 
 
-def create(conn, login, password, company=""):
+def role_of(row):
+    try:
+        value = row["role"]
+    except (KeyError, IndexError, TypeError):
+        return DEFAULT_ROLE
+    return value if value in ROLES else DEFAULT_ROLE
+
+
+def is_admin(row):
+    return row is not None and role_of(row) == "admin"
+
+
+def admin_count(conn, exclude_id=None):
+    sql = "SELECT COUNT(*) FROM accounts WHERE role='admin' AND active=1"
+    args = ()
+    if exclude_id is not None:
+        sql += " AND id<>?"
+        args = (exclude_id,)
+    return conn.execute(sql, args).fetchone()[0]
+
+
+def create(conn, login, password, company="", role=DEFAULT_ROLE):
     login = _norm(login)
     if not login:
         raise ValueError("login is required")
     if len(password or "") < 8:
         raise ValueError("password must be at least 8 characters")
+    if role not in ROLES:
+        raise ValueError(f"role must be one of {ROLES}")
     if get(conn, login):
         raise ValueError(f"account '{login}' already exists")
-    conn.execute("INSERT INTO accounts(login,password_hash,company,active,created_at)"
-                 " VALUES(?,?,?,1,?)",
-                 (login, hash_password(password), company or "", time.time()))
+    if count(conn) == 0:
+        role = "admin"
+    conn.execute("INSERT INTO accounts(login,password_hash,company,role,active,created_at)"
+                 " VALUES(?,?,?,?,1,?)",
+                 (login, hash_password(password), company or "", role, time.time()))
+    conn.commit()
+    return get(conn, login)
+
+
+def set_role(conn, login, role):
+    if role not in ROLES:
+        raise ValueError(f"role must be one of {ROLES}")
+    row = get(conn, login)
+    if not row:
+        raise ValueError(f"no account '{_norm(login)}'")
+    if role != "admin" and is_admin(row) and admin_count(conn, exclude_id=row["id"]) == 0:
+        raise ValueError("this is the last admin; make another account admin first")
+    conn.execute("UPDATE accounts SET role=? WHERE id=?", (role, row["id"]))
+    if role != "admin":
+        end_all_sessions(conn, row["id"])
     conn.commit()
     return get(conn, login)
 

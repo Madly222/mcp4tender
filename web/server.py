@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from web import (assets, routes_analyze, routes_config, routes_digest, routes_schedule,
                  routes_settings, routes_sites, routes_stage, routes_results)
-from web.user import routes_home
+from web.user import routes_home, routes_inbox
 from web.context import add_context_middleware, _expected_token
 from web.render import _login
 
@@ -35,7 +35,8 @@ def create_app(db_path):
                 return _login(request, "Wrong login or password.")
             days = int(store.get("web.session_days", 30) or 30)
             sid = accounts.new_session(conn, acct["id"], days=days)
-            resp = RedirectResponse("/", status_code=303)
+            from web.roles import landing_for
+            resp = RedirectResponse(landing_for(acct), status_code=303)
             resp.set_cookie("te_session", sid, httponly=True, samesite="lax",
                             max_age=days * 86400,
                             secure=bool(store.get("web.cookie_secure", False)))
@@ -67,4 +68,5 @@ def create_app(db_path):
     app.include_router(routes_results.router)
     app.include_router(routes_schedule.router)
     app.include_router(routes_home.router)
+    app.include_router(routes_inbox.router)
     return app

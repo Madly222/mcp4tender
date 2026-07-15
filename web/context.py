@@ -75,6 +75,15 @@ def add_context_middleware(app, db_path):
                              or request.url.path == "/logout")
                 if not acct and not unguarded:
                     return _login(request)
+                if acct is not None:
+                    from fastapi.responses import RedirectResponse
+                    from web.roles import landing_for, may_visit
+                    path = request.url.path
+                    if path == "/" and landing_for(acct) != "/":
+                        return RedirectResponse(landing_for(acct), status_code=303)
+                    if not may_visit(acct, path):
+                        from web.user.errors import denied
+                        return denied(request)
                 return await call_next(request)
             token = _expected_token(store)
             authed, via = _check_auth(request, token)

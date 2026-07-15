@@ -122,6 +122,7 @@ CREATE TABLE IF NOT EXISTS accounts (
     login TEXT NOT NULL UNIQUE,
     password_hash TEXT NOT NULL,
     company TEXT,
+    role TEXT NOT NULL DEFAULT 'user',
     active INTEGER NOT NULL DEFAULT 1,
     created_at REAL,
     last_login_at REAL
@@ -141,6 +142,18 @@ CREATE TABLE IF NOT EXISTS login_attempts (
 CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, at);
 """
 
+SCHEMA_WORK = """
+CREATE TABLE IF NOT EXISTS tender_work (
+    tender_id INTEGER NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL DEFAULT 0,
+    stage TEXT NOT NULL DEFAULT 'qualified',
+    note TEXT,
+    updated_at REAL,
+    PRIMARY KEY (tender_id, account_id)
+);
+CREATE INDEX IF NOT EXISTS idx_tender_work_stage ON tender_work(account_id, stage);
+"""
+
 
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
@@ -151,6 +164,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SUPPLIERS)
     conn.executescript(SCHEMA_SUPERVISOR)
     conn.executescript(SCHEMA_ACCOUNTS)
+    conn.executescript(SCHEMA_WORK)
     _migrate(conn)
     row = conn.execute(
         "SELECT value FROM config_meta WHERE key='generation'"
@@ -297,6 +311,10 @@ def _migrate(conn):
         conn.commit()
     if not _column_exists(conn, "tenders", "origin"):
         conn.execute("ALTER TABLE tenders ADD COLUMN origin TEXT")
+        conn.commit()
+    if not _column_exists(conn, "accounts", "role"):
+        conn.execute("ALTER TABLE accounts ADD COLUMN role TEXT")
+        conn.execute("UPDATE accounts SET role='admin' WHERE role IS NULL")
         conn.commit()
 
 

@@ -48,10 +48,22 @@ def _nav(path, query, counts):
     return "".join(out)
 
 
+def _admin_link(request):
+    from engine import accounts
+    acct = getattr(request.state, "account", None)
+    if acct is not None and not accounts.is_admin(acct):
+        return ""
+    return ('<div class="side-foot">'
+            f'<a class="adm" href="/">{icon("shield")}Engine admin</a></div>')
+
+
 def _who(request):
     acct = getattr(request.state, "account", None)
+    from engine import accounts
     name = (acct["company"] or acct["login"]) if acct else "TenderEngine"
-    role = "Company account" if acct else "Token access"
+    role = "Token access"
+    if acct is not None:
+        role = "Administrator" if accounts.is_admin(acct) else "Company account"
     return (f'<div class="who"><div class="av">{_e(_initials(name))}</div>'
             f'<div class="nm">{_e(name)}<small>{_e(role)}</small></div></div>')
 
@@ -80,9 +92,7 @@ def render(request, title, body, lede="", heading=None, heading_icon=None,
         f'<div class="brand"><div class="mark">{_e(_initials(company))}</div>'
         f'<div class="co">{company}<small>{brand}</small></div></div>'
         f'<nav>{_nav(request.url.path, str(request.url.query or ""), counts)}</nav>'
-        '<div class="side-foot">'
-        f'<a class="adm" href="/">{icon("shield")}Engine admin</a></div>'
-        '</aside><div class="col"><header>'
+        f'{_admin_link(request)}</aside><div class="col"><header>'
         '<div class="title">Tender Management<small>Powered by AI analysis</small></div>'
         f'<div class="spacer"></div>{_who(request)}'
         '<a class="btn ghost sm" href="/logout">Sign out</a>'

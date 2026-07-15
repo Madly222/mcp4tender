@@ -18,9 +18,16 @@ def segment_counts(conn, store):
     return {s: len(v) for s, v in buckets.items()}
 
 
-def nav_counts(conn, store):
+def nav_counts(conn, store, acct_id=0):
+    from workflows import work
     try:
         seg = segment_counts(conn, store)
+        decided = work.decided_ids(conn, acct_id)
+        w = work.counts(conn, acct_id)
     except Exception:
         return {}
-    return {"inbox": seg.get("new", 0)}
+    fresh = [r for r in partition(conn.execute(_RELEVANT).fetchall(), store)["new"]
+             if r["id"] not in decided]
+    out = {"inbox": len(fresh)}
+    out.update({k: v for k, v in w.items() if v})
+    return out

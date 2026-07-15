@@ -355,7 +355,8 @@ def cmd_user(conn, store, args):
             last = (dt.datetime.fromtimestamp(r["last_login_at"]).strftime("%Y-%m-%d %H:%M")
                     if r["last_login_at"] else "never")
             state = "active" if r["active"] else "DISABLED"
-            print(f'{r["login"]:<24} {r["company"] or "-":<24} {state:<9} last login: {last}')
+            role = accounts.role_of(r)
+            print(f'{r["login"]:<24} {r["company"] or "-":<24} {role:<6} {state:<9} last login: {last}')
         return 0
     if not args.login:
         print("--login is required")
@@ -363,8 +364,21 @@ def cmd_user(conn, store, args):
     try:
         if act == "add":
             pw = args.password or getpass.getpass("password: ")
-            accounts.create(conn, args.login, pw, company=args.company)
-            print(f"account created; it can now sign in on the web UI")
+            first = accounts.count(conn) == 0
+            row = accounts.create(conn, args.login, pw, company=args.company,
+                                  role=args.role or accounts.DEFAULT_ROLE)
+            role = accounts.role_of(row)
+            if first and role == "admin" and args.role != "admin":
+                print("first account -> forced to admin so the engine stays reachable")
+            where = "the whole engine" if role == "admin" else "/app only"
+            print(f"account created as {role}; it can sign in and see {where}")
+        elif act == "role":
+            if not args.role:
+                print("--role admin|user is required")
+                return 1
+            accounts.set_role(conn, args.login, args.role)
+            extra = " and signed out" if args.role != "admin" else ""
+            print(f"role changed to {args.role}{extra}")
         elif act == "passwd":
             pw = args.password or getpass.getpass("new password: ")
             accounts.set_password(conn, args.login, pw)
@@ -427,10 +441,13 @@ def main():
     pdd = sub.add_parser("dedupe-docs")
     pdd.add_argument("--source", default="mtender")
     pu = sub.add_parser("user")
-    pu.add_argument("action", choices=["add", "list", "passwd", "delete", "disable", "enable"])
+    pu.add_argument("action",
+                    choices=["add", "list", "passwd", "delete", "disable", "enable", "role"])
     pu.add_argument("--login", default="")
     pu.add_argument("--password", default="", help="omit to be prompted (safer: not in shell history)")
     pu.add_argument("--company", default="")
+    pu.add_argument("--role", default="", choices=["", "admin", "user"],
+                    help="admin sees the whole engine; user only sees /app")
     args = p.parse_args()
 
     conn, store, seeded = bootstrap()
