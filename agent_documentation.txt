@@ -18,6 +18,14 @@ tar upload. IMPORTANT: the assistant cannot push (no credentials) — Victor app
 (tar or a pasted diff) and pushes himself. Always ask "did you push?" before assuming the repo the
 assistant sees is current; a fresh clone at the start of a new chat is the reliable way to check.
 
+THIS FILE IS PUBLIC
+-------------------
+agent_documentation.txt is committed to the PUBLIC GitHub repo above. Never write into it: public IPs,
+hostnames, ports reachable from the internet, network topology, logins, tokens, API keys, or anything that
+tells a stranger where the live instance is and how it is exposed. Deployment specifics live outside git
+(ask Victor). Describe mechanisms ("the app binds web.host/web.port; a gateway NATs an external port to it"),
+never addresses.
+
 CODE STYLE (STRICT)
 -------------------
 - NO COMMENTS anywhere in code.
@@ -410,7 +418,39 @@ COMPONENT MAP
       otherwise the session cookie is sent over plain HTTP).
     SEND: engine/accounts.py + web/context.py + web/server.py (+ web/render.py for the form).
 
-[19] INSTALL VERIFIER
+[19] UI / FRONTEND CONVENTIONS (read this FIRST for any redesign work)
+    THE STACK, honestly: there is no frontend stack. Every page is server-rendered HTML built with Python
+    f-strings inside the routes_*.py modules and returned as HTMLResponse. There is NO template engine (no
+    Jinja), NO JS framework, NO build step, NO /static route, NO asset pipeline, and NO <script> tag anywhere
+    in web/ (the only client-side behaviour is inline onsubmit="return confirm(...)" on destructive buttons).
+    CSS is ONE Python string in web/styles.py, inlined into <style> by _layout and _login. 119 lines, dark
+    theme, driven by CSS custom properties.
+    Design tokens (web/styles.py :root): --bg,--bg-2,--panel,--panel-2,--chip,--line,--line-2,--fg,--mut,
+      --mut-2,--acc,--acc-weak,--acc-line,--ok,--ok-weak,--warn,--warn-weak,--bad,--bad-weak,--r,--r-sm.
+      ALWAYS use these vars, never hardcode a hex — a restyle should mostly be editing :root.
+    Existing classes: .card .chip .dot .empty .err .gaps .help .hint .kv .mono .mut .numfield .ok .rank .row
+      .slider .switch .v-can .v-cannot .v-partial (+ bare element styles for body/main/h1/table/button/input/
+      select/textarea; button.ghost and button.danger variants). Inputs are styled via input[type=text],
+      input[type=password], input[type=number] — an <input> with NO explicit type attribute goes UNSTYLED and
+      looks wrong (this bit us on the login form; always set type=).
+    Render helpers (web/render.py, import from here instead of re-inventing): _e (HTML-escape — EVERY piece of
+      user/db text must pass through it), _ts (epoch -> human time), _table(headers, rows), _layout(request,
+      title, body) (the page shell: nav + header + read-only chip + signed-in company + sign out), _login,
+      _loose, _vclass (verdict -> css class), _help(key) (the "?" tooltip), _vtype/_control/_bool_dot (config
+      widgets), source_url, NAV.
+    Page -> file map: / and /tender and /tenders -> routes_digest.py; /results -> routes_results.py;
+      /stage/* -> routes_stage.py; /analyze -> routes_analyze.py; /sites -> sites_view.py (+ routes_sites*.py);
+      /schedule -> routes_schedule.py; /user-settings -> routes_settings.py; /config -> routes_config.py;
+      /login /logout -> server.py; shell+CSS -> render.py + styles.py.
+    BEFORE A REDESIGN, know this: ~11 test files assert on raw HTML substrings (test_sites, test_settings_api,
+      test_settings, test_phase8, test_scope, test_llm_status, test_results, test_dates_ui, test_schedule_ui,
+      test_stage, test_accounts). Changing markup WILL break them — that is the safety net working, not a
+      reason to skip running them. Update the assertions deliberately, do not delete the tests.
+    If a redesign wants JS/templates/static assets, that is a STRUCTURAL change (new /static mount or a
+      template engine) — decide it explicitly with Victor first; it is not the current shape of the codebase.
+    SEND: web/styles.py + web/render.py (always), plus the routes_*.py of the page being restyled.
+
+[20] INSTALL VERIFIER
     verify_install.py (repo root, plain stdlib, run with the SERVER's python: `.venv/bin/python verify_install.py`
     or `python3 verify_install.py`). Checks required files exist, py_compile each (catches Python-version syntax
     errors before a restart — e.g. 3.12-only f-string escapes on the server's 3.10), imports the key modules,
@@ -452,6 +492,19 @@ KEY FACTS / DECISIONS
 
 OPEN TODOS
 ----------
+- SECURITY, still open: the web UI is served over plain HTTP. Company logins now travel in clear text on every
+  sign-in (worse than the old rarely-typed token), so anyone on the path (public wifi, ISP) can read them.
+  Fix: terminate TLS in front of the app (nginx already runs on this box and holds 80/443 for other sites, so
+  the tender UI would take its own port with its own cert; a self-signed cert works, browsers warn once) and
+  THEN set web.cookie_secure=true (setting it earlier breaks the session cookie over HTTP). Do not touch the
+  existing nginx sites or DNS while doing it — an earlier attempt to publish a subdomain accidentally pointed
+  at the company mail host and had to be rolled back.
+- NEXT PLANNED WORK: a proper production-grade UI (current one is a functional dev skin). Read [19] first.
+- COST: stage "applicability" runs on claude-sonnet-5 and dominates spend (~150 tenders ~ $2.70 vs ~$0.90 on
+  haiku). Deliberately deferred, not forgotten: decide accuracy-vs-cost and possibly switch
+  llm.models.applicability to haiku. /analyze now shows the per-stage and per-tender breakdown to judge this.
+- An account spend/usage cap on the Anthropic side blocked analysis at one point (error code "limit"); if
+  analysis suddenly stops, check User Settings -> Errors before suspecting the code.
 - DONE (was "STEP 2"): daily incremental collection now exists as the Scheduler + collect job (see [17],
   /schedule). What's still NOT built from the original idea: PER-SITE cadence/override (current collect job
   hits all sources together, not site-by-site), and the auto-heal trigger — if incremental yields 0 new
