@@ -88,11 +88,14 @@ def render(request, title, body, lede="", heading=None, heading_icon=None,
         "<!doctype html><html lang=en><head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         f"<title>{brand} &middot; {_e(title)}</title>{_links()}</head><body>"
-        '<div class="shell"><aside>'
+        '<input type="checkbox" id="navtoggle" class="nav-toggle" aria-label="Menu">'
+        '<div class="shell">'
+        '<label for="navtoggle" class="nav-scrim"></label><aside>'
         f'<div class="brand"><div class="mark">{_e(_initials(company))}</div>'
         f'<div class="co">{company}<small>{brand}</small></div></div>'
         f'<nav>{_nav(request.url.path, str(request.url.query or ""), counts)}</nav>'
         f'{_admin_link(request)}</aside><div class="col"><header>'
+        f'<label for="navtoggle" class="nav-btn">{icon("menu")}</label>'
         '<div class="title">Tender Management<small>Powered by AI analysis</small></div>'
         f'<div class="spacer"></div>{_who(request)}'
         '<a class="btn ghost sm" href="/logout">Sign out</a>'
