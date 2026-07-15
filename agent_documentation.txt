@@ -419,7 +419,17 @@ COMPONENT MAP
     SEND: engine/accounts.py + web/context.py + web/server.py (+ web/render.py for the form).
 
 [19] UI / FRONTEND CONVENTIONS (read this FIRST for any redesign work)
-    THE STACK, honestly: there is no frontend stack. Every page is server-rendered HTML built with Python
+    TWO ZONES since the user-zone redesign. Know which one you are editing:
+      * USER ZONE (/app*) — the end-user product. web/user/*.py + web/static/user/*.css, served
+        through web/assets.py. Dark theme, sidebar+topbar shell, styled after a commercial tender
+        portal (see docs/user_prototype.html for the approved look). CSS lives in real .css files
+        under web/static/user/ (tokens.css = :root only, base.css = shell, components.css = the rest);
+        ALWAYS use the tokens, never a raw hex. web/user/layout.py render(...) is the page shell;
+        web/user/nav.py is the menu; web/user/icons.py icon(name) is the SVG set. No JS framework.
+        /static is served by web/assets.py (own 40-line router, no StaticFiles/aiofiles dep) and is
+        SKIPPED by the auth middleware in web/context.py, or the login page would load unstyled.
+      * ADMIN ZONE (everything else) — the operator/dev skin described below. Unchanged.
+    THE ADMIN STACK, honestly: there is no frontend stack. Every page is server-rendered HTML built with Python
     f-strings inside the routes_*.py modules and returned as HTMLResponse. There is NO template engine (no
     Jinja), NO JS framework, NO build step, NO /static route, NO asset pipeline, and NO <script> tag anywhere
     in web/ (the only client-side behaviour is inline onsubmit="return confirm(...)" on destructive buttons).
@@ -499,7 +509,14 @@ OPEN TODOS
   THEN set web.cookie_secure=true (setting it earlier breaks the session cookie over HTTP). Do not touch the
   existing nginx sites or DNS while doing it — an earlier attempt to publish a subdomain accidentally pointed
   at the company mail host and had to be rolled back.
-- NEXT PLANNED WORK: a proper production-grade UI (current one is a functional dev skin). Read [19] first.
+- USER-ZONE REDESIGN, in progress. Step 2 (tokens + /static + shell + /app) is DONE. Remaining:
+  (3) tender_work table = the business stage of a tender (inbox/qualified/in_progress/submitted/
+  won/lost/skipped) — the pipeline status is NOT this; (4) /app/inbox on real data; (5)
+  /app/qualified; (6) real Dashboard + /app/search + /app/archive; (7) tender detail; (8) restyle
+  the admin skin onto the same tokens (values only, markup untouched, so the HTML-substring tests
+  keep passing) and flip "/" to the user zone. Read [19] first. Approved look: docs/user_prototype.html.
+  NOT built and deliberately out of scope: tasks, contracts, projects, per-person assignees (an
+  account is a COMPANY, see [18], so no "assigned to" until that model changes).
 - COST: stage "applicability" runs on claude-sonnet-5 and dominates spend (~150 tenders ~ $2.70 vs ~$0.90 on
   haiku). Deliberately deferred, not forgotten: decide accuracy-vs-cost and possibly switch
   llm.models.applicability to haiku. /analyze now shows the per-stage and per-tender breakdown to judge this.

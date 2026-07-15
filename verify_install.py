@@ -8,7 +8,10 @@ REQUIRED = [
     "engine/db.py", "engine/collectors.py", "engine/scheduler.py",
     "workflows/segments.py", "workflows/analysis.py", "workflows/collect_jobs.py",
     "web/routes_results.py", "web/routes_analyze.py", "web/routes_schedule.py",
-    "web/server.py", "web/render.py", "web/config_meta.py",
+    "web/server.py", "web/render.py", "web/config_meta.py", "web/assets.py",
+    "web/user/layout.py", "web/user/nav.py", "web/user/routes_home.py",
+    "web/static/user/tokens.css", "web/static/user/base.css",
+    "web/static/user/components.css",
     "config/defaults/150_results.json", "config/defaults/20_schedule.json", "app.py",
 ]
 
@@ -18,7 +21,7 @@ if missing:
         print("MISSING ", f)
     print("\nInstall incomplete: unpack the bundle again.")
     sys.exit(1)
-print("files    OK (15)")
+print("files    OK (%d)" % len(REQUIRED))
 
 bad = []
 for f in REQUIRED:
@@ -55,5 +58,8 @@ if "origin" not in inspect.signature(_store_item).parameters:
 from workflows.analysis import SCOPES
 if "not_new" not in SCOPES:
     print("STALE workflows/analysis.py"); sys.exit(1)
+from web.user.layout import SHEETS
+if "user/tokens.css" not in SHEETS:
+    print("STALE web/user/layout.py"); sys.exit(1)
 print("versions OK")
-print("\nAll five parts installed correctly. Restart the service.")
+print("\nInstall looks good. Restart the service.")
