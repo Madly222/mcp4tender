@@ -156,3 +156,38 @@ a.chip.plain:hover{color:var(--acc);text-decoration:none}
 .pref-h label{font-size:13.5px;font-weight:600}
 .pref-b{display:flex;align-items:center;gap:9px}
 .pref-help{color:var(--mut);font-size:12.5px;margin-top:7px;line-height:1.5}
+
+@media(max-width:900px){
+.kpis{grid-template-columns:repeat(2,1fr);gap:9px}
+.kpi{padding:12px 13px}
+.kpi .v{font-size:22px}
+.strips{grid-template-columns:1fr}
+.fb{flex-direction:column;align-items:stretch}
+.fb .grow{min-width:0}
+.fb .btn,.fb .btn.ghost{justify-content:center}
+.tabs{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+.tab{white-space:nowrap}
+}
+
+@media(max-width:760px){
+thead{display:none}
+table,tbody,tbody tr,tbody td{display:block;width:auto}
+tbody tr{border-bottom:1px solid var(--line);padding:14px}
+tbody tr:last-child{border-bottom:0}
+tbody tr:hover td{background:transparent}
+tbody td{border:0;padding:3px 0}
+tbody td:empty{display:none}
+.t-ref{display:inline-block;margin:0 8px 0 0}
+.t-title{font-size:14.5px}
+.t-val{display:flex;align-items:baseline;gap:7px;margin-top:6px}
+.t-val small{margin:0}
+.t-when{display:flex;align-items:center;gap:9px;margin-top:6px}
+.t-left{margin:0}
+.match{margin-top:6px}
+.acts{margin-top:10px;gap:8px}
+.acts .icon-btn{width:auto;flex:1;height:36px}
+td select{max-width:none;width:100%;margin-top:6px}
+.acts .btn{flex:1;justify-content:center}
+.fact{flex-direction:column;gap:3px}
+.fk{width:auto}
+}

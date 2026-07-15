@@ -70,6 +70,33 @@ h1 svg{width:19px;height:19px;color:var(--mut)}
 .head-row{display:flex;align-items:flex-start;gap:16px;margin-bottom:20px}
 .head-row .lede{margin:0}
 
+.nav-toggle{position:fixed;top:0;left:0;width:1px;height:1px;opacity:0;margin:0}
+.nav-btn{display:none;width:34px;height:34px;border-radius:var(--r-sm);flex:none;
+place-items:center;color:var(--mut);cursor:pointer;box-shadow:inset 0 0 0 1px var(--line);
+background:var(--surface)}
+.nav-btn svg{width:17px;height:17px}
+.nav-btn:hover{color:var(--fg)}
+.nav-toggle:focus-visible+.shell .nav-btn{outline:2px solid var(--acc);outline-offset:2px}
+.nav-scrim{display:none}
+
 @media(max-width:1180px){.two{grid-template-columns:1fr}}
-@media(max-width:900px){.shell{grid-template-columns:1fr}aside{display:none}}
+
+@media(max-width:900px){
+.shell{grid-template-columns:1fr}
+.nav-btn{display:grid}
+aside{position:fixed;top:0;left:0;bottom:0;width:270px;height:100dvh;z-index:60;
+transform:translateX(-100%);transition:transform .18s ease;
+box-shadow:0 0 40px rgba(0,0,0,.5)}
+.nav-toggle:checked+.shell aside{transform:none}
+.nav-toggle:checked+.shell .nav-scrim{display:block;position:fixed;inset:0;z-index:50;
+background:rgba(0,0,0,.55)}
+header{padding:0 14px;gap:10px}
+header .title{display:none}
+.who{padding:4px}
+.who .nm{display:none}
+main{padding:16px 14px 40px}
+h1{font-size:18px}
+.head-row{flex-direction:column;gap:12px}
+}
+
 @media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
