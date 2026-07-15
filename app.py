@@ -342,6 +342,48 @@ def cmd_probe(conn, store, args):
     return 0
 
 
+def cmd_user(conn, store, args):
+    import getpass
+    from engine import accounts
+    act = args.action
+    if act == "list":
+        rows = accounts.list_all(conn)
+        if not rows:
+            print("no company accounts yet -> web login still uses web.token")
+            return 0
+        for r in rows:
+            last = (dt.datetime.fromtimestamp(r["last_login_at"]).strftime("%Y-%m-%d %H:%M")
+                    if r["last_login_at"] else "never")
+            state = "active" if r["active"] else "DISABLED"
+            print(f'{r["login"]:<24} {r["company"] or "-":<24} {state:<9} last login: {last}')
+        return 0
+    if not args.login:
+        print("--login is required")
+        return 1
+    try:
+        if act == "add":
+            pw = args.password or getpass.getpass("password: ")
+            accounts.create(conn, args.login, pw, company=args.company)
+            print(f"account created; it can now sign in on the web UI")
+        elif act == "passwd":
+            pw = args.password or getpass.getpass("new password: ")
+            accounts.set_password(conn, args.login, pw)
+            print("password changed; existing sessions were signed out")
+        elif act == "disable":
+            accounts.set_active(conn, args.login, False)
+            print("account disabled and signed out")
+        elif act == "enable":
+            accounts.set_active(conn, args.login, True)
+            print("account enabled")
+        elif act == "delete":
+            accounts.delete(conn, args.login)
+            print("account deleted")
+    except ValueError as e:
+        print(f"error: {e}")
+        return 1
+    return 0
+
+
 def cmd_dedupe_docs(conn, store, args):
     from workflows.analysis import dedupe_documents_db
     r = dedupe_documents_db(conn, source=getattr(args, "source", None) or "mtender")
@@ -384,6 +426,11 @@ def main():
     pdg.add_argument("--limit", type=int, default=None)
     pdd = sub.add_parser("dedupe-docs")
     pdd.add_argument("--source", default="mtender")
+    pu = sub.add_parser("user")
+    pu.add_argument("action", choices=["add", "list", "passwd", "delete", "disable", "enable"])
+    pu.add_argument("--login", default="")
+    pu.add_argument("--password", default="", help="omit to be prompted (safer: not in shell history)")
+    pu.add_argument("--company", default="")
     args = p.parse_args()
 
     conn, store, seeded = bootstrap()
@@ -402,7 +449,8 @@ def main():
                "llm-test": cmd_llm_test, "read-doc": cmd_read_doc,
                "extract": cmd_extract, "applicability": cmd_applicability,
                "suppliers": cmd_suppliers, "supervise": cmd_supervise,
-               "digest": cmd_digest, "dedupe-docs": cmd_dedupe_docs}.get(args.command, cmd_demo)
+               "digest": cmd_digest, "dedupe-docs": cmd_dedupe_docs,
+               "user": cmd_user}.get(args.command, cmd_demo)
     sys.exit(handler(conn, store, args))
 
 

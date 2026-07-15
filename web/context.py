@@ -45,6 +45,16 @@ def _schedule_restart(delay=1.0):
     threading.Thread(target=_die, daemon=True).start()
 
 
+def _accounts_on(conn):
+    """True once at least one company account exists. Until then the old
+    web.token flow stays in charge, so an existing install is never locked out."""
+    try:
+        from engine import accounts
+        return accounts.count(conn) > 0
+    except Exception:
+        return False
+
+
 def add_context_middleware(app, db_path):
     @app.middleware("http")
     async def context(request, call_next):
@@ -54,7 +64,18 @@ def add_context_middleware(app, db_path):
         request.state.conn = conn
         request.state.store = store
         request.state.readonly = bool(store.get("web.read_only", False))
+        request.state.account = None
         try:
+            if _accounts_on(conn):
+                from engine import accounts
+                acct = accounts.session_account(conn, request.cookies.get("te_session"))
+                request.state.account = acct
+                request.state.authed = bool(acct)
+                unguarded = ((request.url.path == "/login" and request.method == "POST")
+                             or request.url.path == "/logout")
+                if not acct and not unguarded:
+                    return _login(request)
+                return await call_next(request)
             token = _expected_token(store)
             authed, via = _check_auth(request, token)
             request.state.authed = authed

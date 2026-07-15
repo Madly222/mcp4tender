@@ -230,9 +230,26 @@ COMPONENT MAP
 [11] WEB — CORE
     Purpose: FastAPI app, auth/context, shared HTML render, styles.
     Files: web/server.py (create_app; includes routers digest/config/sites/analyze/settings/stage/results;
-    /healthz /login); web/context.py (request.state.conn/store/readonly);
+    /healthz /login /logout); web/context.py (request.state.conn/store/readonly/account);
     web/render.py (_e,_ts,_table,_layout,_login,_loose,_vclass,_help,NAV,source_url,...);
     web/styles.py (CSS dark theme).
+    AUTH — TWO MODES, decided at request time by _accounts_on(conn) in context.py:
+      * COMPANY ACCOUNTS (preferred, active as soon as >=1 row in `accounts`): login+password form ->
+        engine/accounts.authenticate -> session row -> cookie te_session (httponly, samesite=lax,
+        secure=web.cookie_secure, lifetime web.session_days default 30). An account is a COMPANY credential
+        (login, password_hash, company, active), deliberately shareable by several people at that company —
+        it is not a per-person user. Brute force is throttled per client IP (login_attempts table;
+        accounts.MAX_FAILS=10 within LOCK_WINDOW=900s -> locked, right password included). Manage with
+        `app.py user add|list|passwd|disable|enable|delete --login X [--company Y]` (password is prompted
+        when --password is omitted, so it stays out of shell history). Password change / disable / delete all
+        kill that account's live sessions.
+      * TOKEN (legacy fallback, ONLY while zero accounts exist, so an existing install is never locked out):
+        _expected_token(store) = env TENDERENGINE_WEB_TOKEN FIRST, then config web.token. GOTCHA THAT BIT US:
+        the env var WINS, so setting web.token in config while the env var is set changes nothing — the login
+        form keeps checking the env value. Token mode also accepts ?token= in the URL (leaks into logs and
+        browser history). Creating the first account turns this whole path OFF, which is the point.
+    Passwords: PBKDF2-SHA256, 240k iterations, per-password random salt, hmac.compare_digest (engine/accounts).
+    Stdlib only — do not add bcrypt/passlib deps.
     NAV (render.py) — current tabs: Digest, Results, Tenders, Triage, Extract, Applicability, Suppliers,
     Analyze, Sites, Schedule, User Settings, Config. REMOVED (were dev noise / folded into per-tender stage
     logs): Verifications, Coverage, Runs, Stages, Audit.
@@ -379,7 +396,21 @@ COMPONENT MAP
     SEND: engine/scheduler.py + workflows/collect_jobs.py (+ app.py for the dispatch wiring, + web/routes_
       schedule.py for the UI, + config/defaults/20_schedule.json).
 
-[18] INSTALL VERIFIER
+[18] AUTH / ACCOUNTS (engine side)
+    Purpose: company login+password for the web UI, replacing the shared token. See [11] for the web wiring.
+    Files: engine/accounts.py -> hash_password/verify_password (PBKDF2-SHA256, salted, constant-time compare);
+      count/get/list_all/create/set_password/set_active/delete/authenticate (logins are normalised lower+strip,
+      so "RapidLink" == "rapidlink"; password min length 8; authenticate burns a dummy hash on unknown login so
+      a wrong login is not measurably faster than a wrong password); new_session/session_account/end_session/
+      end_all_sessions/purge_sessions; record_attempt/failures/is_locked/clear_attempts (per-IP throttle).
+    Tables (engine/db.py SCHEMA_ACCOUNTS, auto-created on boot): accounts(login UNIQUE, password_hash, company,
+      active, created_at, last_login_at); sessions(sid PK, account_id FK CASCADE, created_at, expires_at);
+      login_attempts(ip, at).
+    Config: web.session_days (30), web.cookie_secure (False — MUST become True once the UI is behind HTTPS,
+      otherwise the session cookie is sent over plain HTTP).
+    SEND: engine/accounts.py + web/context.py + web/server.py (+ web/render.py for the form).
+
+[19] INSTALL VERIFIER
     verify_install.py (repo root, plain stdlib, run with the SERVER's python: `.venv/bin/python verify_install.py`
     or `python3 verify_install.py`). Checks required files exist, py_compile each (catches Python-version syntax
     errors before a restart — e.g. 3.12-only f-string escapes on the server's 3.10), imports the key modules,
