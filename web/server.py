@@ -18,13 +18,43 @@ def create_app(db_path):
         return JSONResponse({"status": "ok"})
 
     @app.post("/login")
-    def login(request: Request, token: str = Form("")):
-        expected = _expected_token(request.state.store)
+    def do_login(request: Request, token: str = Form(""), login: str = Form(""),
+                 password: str = Form("")):
+        from engine import accounts
+        conn = request.state.conn
+        store = request.state.store
+        if accounts.count(conn) > 0:
+            ip = request.client.host if request.client else "?"
+            if accounts.is_locked(conn, ip):
+                return _login(request, "Too many failed attempts. Try again in a few minutes.")
+            acct = accounts.authenticate(conn, login, password)
+            accounts.record_attempt(conn, ip, bool(acct))
+            if not acct:
+                return _login(request, "Wrong login or password.")
+            days = int(store.get("web.session_days", 30) or 30)
+            sid = accounts.new_session(conn, acct["id"], days=days)
+            resp = RedirectResponse("/", status_code=303)
+            resp.set_cookie("te_session", sid, httponly=True, samesite="lax",
+                            max_age=days * 86400,
+                            secure=bool(store.get("web.cookie_secure", False)))
+            return resp
+        expected = _expected_token(store)
         if expected and token == expected:
             resp = RedirectResponse("/", status_code=303)
             resp.set_cookie("te_token", token, httponly=True, samesite="lax")
             return resp
         return _login(request, "Wrong token.")
+
+    @app.get("/logout")
+    def logout(request: Request):
+        from engine import accounts
+        sid = request.cookies.get("te_session")
+        if sid:
+            accounts.end_session(request.state.conn, sid)
+        resp = RedirectResponse("/", status_code=303)
+        resp.delete_cookie("te_session")
+        resp.delete_cookie("te_token")
+        return resp
 
     app.include_router(routes_digest.router)
     app.include_router(routes_config.router)

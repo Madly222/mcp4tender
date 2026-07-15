@@ -126,6 +126,11 @@ def _layout(request, title, body):
         for href, label in NAV
     )
     ro = ' &middot; <span class="chip">read-only</span>' if request.state.readonly else ""
+    acct = getattr(request.state, "account", None)
+    if acct is not None:
+        who = _e(acct["company"] or acct["login"])
+        ro += (f' &middot; <span class="mut">{who}</span> '
+               f'&middot; <a href="/logout">sign out</a>')
     return HTMLResponse(
         f"<!doctype html><html><head><meta charset=utf-8>"
         f"<meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -136,10 +141,30 @@ def _layout(request, title, body):
     )
 
 
+def _accounts_mode(request):
+    conn = getattr(request.state, "conn", None)
+    if conn is None:
+        return False
+    try:
+        from engine import accounts
+        return accounts.count(conn) > 0
+    except Exception:
+        return False
+
+
 def _login(request, error=""):
     msg = f'<div class="err">{_e(error)}</div>' if error else ""
     store = request.state.store
     brand = _e(store.get("web.title", "TenderEngine"))
+    if _accounts_mode(request):
+        fields = (f"<p class=mut>Sign in with your company account.</p>"
+                  f"<input type=text name=login placeholder='login' autocapitalize=off "
+                  f"autocorrect=off autofocus>"
+                  f"<input type=password name=password placeholder='password' "
+                  f"style='margin-top:8px'>")
+    else:
+        fields = (f"<p class=mut>Access protected by token.</p>"
+                  f"<input type=password name=token placeholder='token' autofocus>")
     return HTMLResponse(
         f"<!doctype html><html><head><meta charset=utf-8>"
         f"<meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -147,8 +172,7 @@ def _login(request, error=""):
         f"<main style='max-width:380px;margin-top:12vh'>"
         f"<div class=card><h1>{brand}</h1>{msg}"
         f"<form method=post action='/login'>"
-        f"<p class=mut>Access protected by token.</p>"
-        f"<input type=password name=token placeholder='token' autofocus>"
+        f"{fields}"
         f"<div class=row style='margin-top:10px'><button>Sign in</button></div>"
         f"</form></div></main></body></html>",
         status_code=401,

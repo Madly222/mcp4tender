@@ -116,6 +116,32 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     return conn
 
 
+SCHEMA_ACCOUNTS = """
+CREATE TABLE IF NOT EXISTS accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    login TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    company TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at REAL,
+    last_login_at REAL
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    sid TEXT PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    created_at REAL,
+    expires_at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_account ON sessions(account_id);
+CREATE TABLE IF NOT EXISTS login_attempts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ip TEXT,
+    at REAL
+);
+CREATE INDEX IF NOT EXISTS idx_login_attempts_ip ON login_attempts(ip, at);
+"""
+
+
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA)
     conn.executescript(SCHEMA_SOURCES)
@@ -124,6 +150,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_VERIFY)
     conn.executescript(SCHEMA_SUPPLIERS)
     conn.executescript(SCHEMA_SUPERVISOR)
+    conn.executescript(SCHEMA_ACCOUNTS)
     _migrate(conn)
     row = conn.execute(
         "SELECT value FROM config_meta WHERE key='generation'"
