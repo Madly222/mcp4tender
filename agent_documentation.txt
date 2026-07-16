@@ -477,9 +477,18 @@ COMPONENT MAP
            parse_times now accepts a single-digit hour ("6:00" -> "06:00"); the old regex demanded
            two digits, which made the existing "%02d" normalisation dead code and silently threw
            the user's time away. Hours > 23 are still dropped.
-           STILL RAW JSON: suppliers.catalog, llm.models, llm.pricing, triage.cpv_weights,
-           triage.value_band, sources.* - give them forms next. suppliers.catalog is the most
-           valuable (it drives the margin figure the user sees on every card).
+      (12d) DONE for the catalog: /app/settings/suppliers renders one card per catalog line
+           (what it is / model / supplier / vendor / price / currency / specs) instead of raw JSON.
+           settings_ops.save_catalog rewrites the WHOLE list from the form, so a line is deleted by
+           ticking Remove or clearing its name; ids are preserved via a hidden field and generated
+           as a slug for new lines, de-duplicated with -2/-3.
+           WHY currency is a <select> and not a text box: workflows/suppliers._to_currency returns
+           None when fx_rates has no rate, so the line cost silently vanishes and the margin shown
+           on every card is wrong. A typo used to be enough. save_catalog also warns which
+           currencies have no rate, and the form repeats it as a red strip.
+           STILL RAW JSON: llm.models, llm.pricing, triage.cpv_weights, triage.value_band,
+           sources.*, suppliers.fx_rates - these are small dicts the generated editor handles
+           acceptably; do them only if Victor asks.
       (13) Cross-instance admin overview: one page listing every company instance and what it is
            doing. SETTLED: read each instance's SQLite READ-ONLY (file: URI with mode=ro). Safe
            because db.connect sets journal_mode=WAL and busy_timeout=5000, so a reader never
