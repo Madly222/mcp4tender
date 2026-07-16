@@ -69,9 +69,11 @@ def test_section_shows_keys_with_descriptions(tmp_path, monkeypatch):
     p, conn = _fresh(tmp_path,"s3.db")
     accounts.create(conn, "rl", "password1", role="user"); conn.close()
     h = _login(p).get("/app/settings/relevance").text
-    assert "triage.keyword_weights" in h and "triage.cpv_weights" in h
-    assert "Score added when a keyword" in h
+    assert "triage.cpv_weights" in h and "triage.value_band" in h
+    assert "Score added per CPV code prefix" in h
     assert "capabilities.profile" not in h
+    assert "triage.keyword_weights" not in h, "the friendly form owns this key now"
+    assert "Everything else here" in h
 def test_saving_a_scalar_and_a_json_key(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"s4.db")

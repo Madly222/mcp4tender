@@ -106,8 +106,8 @@ def test_key_banner_shows_ok_check(tmp_path, monkeypatch):
 def test_test_key_persists_result(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-x")
-    import web.routes_settings as rs
-    monkeypatch.setattr(rs, "check_api_key",
+    from engine import health
+    monkeypatch.setattr(health, "check_api_key",
                         lambda **k: {"status": "fail", "code": "auth",
                                      "detail": "The API key is rejected.", "raw": "401"})
     p = _app(tmp_path)

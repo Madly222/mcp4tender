@@ -7,9 +7,11 @@ from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
 from web.config_meta import CONFIG_META
+from web import settings_ops
 from web.render import _e
 from web.user.counts import nav_counts
 from web.user.icons import icon
+from web.user.forms import FORMS, HANDLED
 from web.user.layout import render
 from web.user.settings_meta import (BY_ID, SECTIONS, keys_in, parse, section_of, vtype_of)
 from workflows import work
@@ -121,12 +123,84 @@ def settings_section(request: Request, section_id: str, saved: str = "", err: st
                   f'<div class="tx"><b>Saved</b><span>{_e(saved)} — the engine picks it up on '
                   "its next run.</span></div></div></div>")
 
+    friendly = ""
+    if section_id in FORMS:
+        friendly = FORMS[section_id](store) + '<div class="gap"></div>'
+        keys = [k for k in keys if k not in HANDLED.get(section_id, ())]
+
     if keys:
         rows = "".join(_row(k, store.get(k), back) for k in keys)
-        inner = f'<div class="card"><div class="card-b">{rows}</div></div>'
+        more = ('<div class="card"><div class="card-h">'
+                f'{icon("sliders")}<h2>Everything else here</h2></div>'
+                f'<div class="card-b">{rows}</div></div>') if friendly else \
+            f'<div class="card"><div class="card-b">{rows}</div></div>'
+        inner = friendly + more
+    elif friendly:
+        inner = friendly
     else:
         inner = '<div class="card"><div class="empty">Nothing configurable here.</div></div>'
 
     crumb = f'<a class="btn ghost sm" href="/app/settings">All settings</a>'
     return render(request, label, banner + inner, heading=label, heading_icon=ic, lede=blurb,
                   actions=crumb, counts=nav_counts(conn, store, work.account_id(request)))
+
+
+def _back(section_id, msg="", err=""):
+    q = ""
+    if msg:
+        q = "?saved=" + quote(msg)
+    elif err:
+        q = "?err=" + quote(err)
+    return RedirectResponse(f"/app/settings/{section_id}{q}", status_code=303)
+
+
+def _guard(request, section_id):
+    if request.state.store.get("web.read_only"):
+        return _back(section_id, err="read-only mode is on")
+    return None
+
+
+@router.post("/app/settings/company/save")
+async def company_save(request: Request):
+    stop = _guard(request, "company")
+    if stop:
+        return stop
+    form = await request.form()
+    return _back("company", msg=settings_ops.save_company(form, request.state.store, actor="app"))
+
+
+@router.post("/app/settings/keywords/save")
+async def keywords_save(request: Request):
+    stop = _guard(request, "relevance")
+    if stop:
+        return stop
+    form = await request.form()
+    try:
+        return _back("relevance",
+                     msg=settings_ops.save_keywords(form, request.state.store, actor="app"))
+    except settings_ops.SettingsError as ex:
+        return _back("relevance", err=str(ex))
+
+
+@router.post("/app/settings/apikey/save")
+async def apikey_save(request: Request):
+    stop = _guard(request, "ai")
+    if stop:
+        return stop
+    form = await request.form()
+    try:
+        return _back("ai", msg=settings_ops.save_apikey(form))
+    except settings_ops.SettingsError as ex:
+        return _back("ai", err=str(ex))
+
+
+@router.post("/app/settings/apikey/test")
+async def apikey_test(request: Request):
+    stop = _guard(request, "ai")
+    if stop:
+        return stop
+    form = await request.form()
+    try:
+        return _back("ai", msg=settings_ops.run_key_test(form, request.state.store, actor="app"))
+    except settings_ops.SettingsError as ex:
+        return _back("ai", err=str(ex))
