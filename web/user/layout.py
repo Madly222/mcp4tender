@@ -10,6 +10,11 @@ from web.user.nav import NAV, is_on
 SHEETS = ("tokens.css", "user/base.css", "user/components.css")
 
 
+def _theme(request):
+    from engine import user_settings
+    return user_settings.theme_of(request)
+
+
 def _initials(text):
     parts = [p for p in str(text or "").split() if p]
     if not parts:
@@ -85,7 +90,8 @@ def render(request, title, body, lede="", heading=None, heading_icon=None,
         else:
             head = f"<h1>{ic}{_e(heading)}</h1>{led}"
     return HTMLResponse(
-        "<!doctype html><html lang=en><head><meta charset=utf-8>"
+        f'<!doctype html><html lang=en data-theme="{_theme(request)}">'
+        "<head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
         f"<title>{brand} &middot; {_e(title)}</title>{_links()}</head><body>"
         '<input type="checkbox" id="navtoggle" class="nav-toggle" aria-label="Menu">'
