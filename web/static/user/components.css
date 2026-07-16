@@ -209,3 +209,7 @@ background:var(--acc-weak);color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc
 .kw2-h{color:var(--mut-2);font-size:10.5px;font-weight:700;letter-spacing:.07em;
 text-transform:uppercase;margin-bottom:5px}
 .chip b{font-weight:700}
+.switches{display:flex;flex-wrap:wrap;gap:7px}
+.switches .switch{padding:5px 10px;border-radius:var(--r-sm);background:var(--surface-2);
+box-shadow:inset 0 0 0 1px var(--line);gap:7px}
+.switches .switch:hover{background:var(--surface-3)}

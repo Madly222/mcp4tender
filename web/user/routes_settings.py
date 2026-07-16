@@ -204,3 +204,13 @@ async def apikey_test(request: Request):
         return _back("ai", msg=settings_ops.run_key_test(form, request.state.store, actor="app"))
     except settings_ops.SettingsError as ex:
         return _back("ai", err=str(ex))
+
+
+@router.post("/app/settings/schedule/save")
+async def schedule_save(request: Request):
+    stop = _guard(request, "schedule")
+    if stop:
+        return stop
+    form = await request.form()
+    return _back("schedule",
+                 msg=settings_ops.save_schedule(form, request.state.store, actor="app"))

@@ -85,3 +85,63 @@ def run_key_test(form, store, actor="web"):
     if r["status"] == "ok":
         return "key works"
     raise SettingsError(f"{r.get('code')}: {r.get('detail')}")
+
+
+DAYS = [(0, "Mon"), (1, "Tue"), (2, "Wed"), (3, "Thu"), (4, "Fri"), (5, "Sat"), (6, "Sun")]
+KNOWN_SOURCES = [("mtender", "MTender (no tokens)"),
+                 ("genericweb", "Generic web (uses tokens)")]
+_TIME_RE = __import__("re").compile(r"^(\d{1,2}):([0-5]\d)$")
+
+
+def collect_job(store):
+    for j in store.get("schedule.jobs", []) or []:
+        if isinstance(j, dict) and j.get("kind") == "collect":
+            return j
+    return {"kind": "collect", "sources": ["mtender", "genericweb"], "days": [],
+            "at": ["06:00", "18:00"], "analyze": True, "enabled": False}
+
+
+def other_jobs(store):
+    return [j for j in (store.get("schedule.jobs", []) or [])
+            if not (isinstance(j, dict) and j.get("kind") == "collect")]
+
+
+def parse_times(raw):
+    import re
+    out = []
+    for part in re.split(r"[,\s]+", raw or ""):
+        part = part.strip()
+        m = _TIME_RE.match(part) if part else None
+        if not m or int(m.group(1)) > 23:
+            continue
+        norm = "%02d:%s" % (int(m.group(1)), m.group(2))
+        if norm not in out:
+            out.append(norm)
+    return sorted(out)[:24]
+
+
+def save_schedule(form, store, actor="web"):
+    tz = (form.get("timezone") or "").strip()
+    enabled = form.get("enabled") == "on"
+    days = [i for i, _ in DAYS if form.get(f"day_{i}") == "on"]
+    times = parse_times(form.get("times") or "")
+    sources = [k for k, _ in KNOWN_SOURCES if form.get(f"src_{k}") == "on"] or \
+        [k for k, _ in KNOWN_SOURCES]
+    analyze = form.get("analyze") == "on"
+
+    warn = ""
+    if tz:
+        try:
+            from zoneinfo import ZoneInfo
+            ZoneInfo(tz)
+        except Exception:
+            warn = f" (warning: timezone {tz} not recognised, using server local time)"
+    if enabled and not times:
+        warn += " (warning: no valid run times, schedule will not fire)"
+
+    job = {"kind": "collect", "sources": sources, "days": days,
+           "at": times, "analyze": analyze, "enabled": enabled}
+    store.set("schedule.timezone", tz, actor=actor, note="schedule.timezone")
+    store.set("schedule.jobs", other_jobs(store) + [job], actor=actor,
+              note="schedule collect job")
+    return "schedule saved" + warn

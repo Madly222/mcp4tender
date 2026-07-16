@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from engine.secrets import get_api_key, key_source, mask
+from web import settings_ops
 from web.render import _e
 from web.user.icons import icon
 
@@ -8,6 +9,7 @@ HANDLED = {
     "company": ("capabilities.profile",),
     "relevance": ("triage.keyword_weights",),
     "ai": (),
+    "schedule": ("schedule.jobs", "schedule.timezone"),
 }
 
 
@@ -149,4 +151,50 @@ def apikey_form(store):
             "</div></form>")
 
 
-FORMS = {"company": company_form, "relevance": keywords_form, "ai": apikey_form}
+def schedule_form(store):
+    job = settings_ops.collect_job(store)
+    tz = store.get("schedule.timezone", "") or ""
+    on = " checked" if job.get("enabled") else ""
+    days = set(job.get("days") or [])
+    day_boxes = "".join(
+        f'<label class="switch"><input type="checkbox" name="day_{i}"'
+        f'{" checked" if i in days else ""}><span>{_e(label)}</span></label>'
+        for i, label in settings_ops.DAYS)
+    picked = set(job.get("sources") or [])
+    src_boxes = "".join(
+        f'<label class="switch"><input type="checkbox" name="src_{k}"'
+        f'{" checked" if k in picked else ""}><span>{_e(label)}</span></label>'
+        for k, label in settings_ops.KNOWN_SOURCES)
+    times = ", ".join(job.get("at") or [])
+    extra = settings_ops.other_jobs(store)
+    extra_note = ""
+    if extra:
+        extra_note = (f'<div class="pref-help">{len(extra)} other job(s) are configured and are '
+                      "left untouched by this form.</div>")
+    rows = (
+        _field("Scanning is", "Turn this off and nothing is collected automatically.",
+               f'<label class="switch"><input type="checkbox" name="enabled"{on}>'
+               f'<span>{"On" if on else "Off"}</span></label>')
+        + _field("Run at", "Times of day, 24h. Comma separated. Up to 24 a day. Anything that is "
+                 "not HH:MM is dropped silently.", _txt("times", times), "e.g. 06:00, 18:00")
+        + _field("On these days", "None ticked means every day.",
+                 f'<div class="switches">{day_boxes}</div>')
+        + _field("Timezone", "IANA name. Empty means the server's local time.",
+                 _txt("timezone", tz), "e.g. Europe/Chisinau")
+        + _field("Scan these sources", "None ticked means all of them.",
+                 f'<div class="switches">{src_boxes}</div>')
+        + _field("Analyse after collecting",
+                 "Run triage, extraction, applicability and sourcing on whatever was just found. "
+                 "This is what spends money on your API key.",
+                 '<label class="switch"><input type="checkbox" name="analyze"'
+                 f'{" checked" if job.get("analyze") else ""}><span>Yes</span></label>')
+    )
+    return ('<form method="post" action="/app/settings/schedule/save" class="card">'
+            f'<div class="card-h">{icon("clock")}<h2>When we scan</h2></div>'
+            f'<div class="card-b">{rows}{extra_note}</div>'
+            '<div class="fb" style="border-top:1px solid var(--line)">'
+            '<button class="btn">Save schedule</button></div></form>')
+
+
+FORMS = {"company": company_form, "relevance": keywords_form, "ai": apikey_form,
+         "schedule": schedule_form}
