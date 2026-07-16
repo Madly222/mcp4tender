@@ -11,6 +11,7 @@ from web import settings_ops
 from web.render import _e
 from web.user.counts import nav_counts
 from web.user.icons import icon
+from web.user import dictforms
 from web.user.forms import FORMS, HANDLED
 from web.user.layout import render
 from web.user.settings_meta import (BY_ID, SECTIONS, keys_in, parse, section_of, vtype_of)
@@ -127,6 +128,10 @@ def settings_section(request: Request, section_id: str, saved: str = "", err: st
     if section_id in FORMS:
         friendly = FORMS[section_id](store) + '<div class="gap"></div>'
         keys = [k for k in keys if k not in HANDLED.get(section_id, ())]
+    for k in dictforms.keys_for(section_id):
+        if k in keys:
+            friendly += dictforms.form_for(store, k) + '<div class="gap"></div>'
+            keys = [x for x in keys if x != k]
 
     if keys:
         rows = "".join(_row(k, store.get(k), back) for k in keys)
@@ -224,3 +229,28 @@ async def catalog_save(request: Request):
     form = await request.form()
     return _back("suppliers",
                  msg=settings_ops.save_catalog(form, request.state.store, actor="app"))
+
+
+@router.post("/app/settings/kv/save")
+async def kv_save(request: Request):
+    form = await request.form()
+    key = str(form.get("key") or "")
+    spec = dictforms.SPECS.get(key)
+    sid = section_of(key)
+    if not spec or not sid:
+        return RedirectResponse("/app/settings", status_code=303)
+    stop = _guard(request, sid)
+    if stop:
+        return stop
+    try:
+        if spec["kind"] == "pairs":
+            msg = settings_ops.save_pairs(form, request.state.store, key,
+                                          bool(spec.get("num")), actor="app")
+        elif spec["kind"] == "table":
+            msg = settings_ops.save_table(form, request.state.store, key,
+                                          [c for c, _l in spec["cols"]], actor="app")
+        else:
+            msg = settings_ops.save_fields(form, request.state.store, key, actor="app")
+    except settings_ops.SettingsError as ex:
+        return _back(sid, err=str(ex))
+    return _back(sid, msg=msg)
