@@ -19,6 +19,7 @@ NAV = [
         {"href": "/app/search", "label": "Search all tenders", "icon": "search"},
         {"href": "/app/archive", "label": "Archive", "icon": "archive"},
         {"href": "/app/preferences", "label": "Preferences", "icon": "sliders"},
+        {"href": "/app/settings", "label": "Company settings", "icon": "gear"},
     ]),
 ]
 

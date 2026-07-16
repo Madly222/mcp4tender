@@ -191,3 +191,17 @@ td select{max-width:none;width:100%;margin-top:6px}
 .fact{flex-direction:column;gap:3px}
 .fk{width:auto}
 }
+.sects{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.sect{display:flex;align-items:center;gap:13px;padding:15px;border-radius:var(--r-lg);
+background:var(--surface);border:1px solid var(--line);color:var(--fg)}
+.sect:hover{background:var(--surface-2);border-color:var(--line-2);text-decoration:none}
+.sect-i{width:36px;height:36px;border-radius:10px;flex:none;display:grid;place-items:center;
+background:var(--acc-weak);color:var(--acc);box-shadow:inset 0 0 0 1px var(--acc-line)}
+.sect-i svg{width:17px;height:17px}
+.sect-t{flex:1;min-width:0}
+.sect-t b{display:block;font-size:13.5px;font-weight:640}
+.sect-t span{color:var(--mut);font-size:12.5px;line-height:1.45;display:block;margin-top:2px}
+.ta{font-family:var(--mono);font-size:12px;line-height:1.55;resize:vertical;width:100%}
+.switch{display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:13px}
+.switch input{width:16px;height:16px;accent-color:var(--acc)}
+@media(max-width:760px){.sects{grid-template-columns:1fr}}

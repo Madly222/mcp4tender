@@ -27,6 +27,7 @@ _PATHS = {
     "refresh": '<path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/>',
     "filter": '<path d="M3 5h18l-7 8v6l-4 2v-8z"/>',
     "edit": '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+    "gear": '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
     "menu": '<path d="M3 6h18M3 12h18M3 18h18"/>',
     "bang": '<path d="M12 8v5M12 17h.01"/>',
 }
