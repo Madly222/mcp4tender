@@ -418,6 +418,47 @@ COMPONENT MAP
       otherwise the session cookie is sent over plain HTTP).
     SEND: engine/accounts.py + web/context.py + web/server.py (+ web/render.py for the form).
 
+[18c] MULTI-COMPANY: SOLVED BY DEPLOYMENT, NOT BY SCHEMA (decided Jul 2026, re-confirmed after
+    Victor asked for per-company sources/schedule/models/pricing too). If EVERY setting is
+    per-company then companies share nothing but the code - and storage that shares nothing is a
+    separate database. So: ONE INSTANCE PER COMPANY. Own directory, own tenderengine.db, own .env
+    with that company's ANTHROPIC key, own port, own systemd unit.
+    Why this and not a multi-tenant core, in case a future agent wants to "improve" it:
+      * The engine's real work is a BACKGROUND thread (app.py _start_scheduler_thread), which owns
+        its own ConfigStore loaded once at startup and fires run_pipeline() on a 30s timer. Nobody
+        is logged in at 03:00. "Swap the config for whoever is currently working" has nothing to
+        swap in the main path, and swapping ambient globals is the exact source of cross-company
+        leaks. Web requests are already isolated (context.py builds a fresh conn+ConfigStore per
+        request) - that isolation is not the problem; the scheduler is.
+      * Separate processes give per-company scan times and true parallelism for free: separate
+        scheduler threads, separate SQLite files, no lock contention on one db, no GIL sharing.
+      * Isolation is physical. A multi-tenant core leaks the moment one WHERE company_id is
+        forgotten - and applicability answers "can WE do this", so a leak is not cosmetic.
+      * Each company's API key stays in its own .env instead of plaintext in your SQLite.
+    Therefore: do NOT add company_id/account_id to tenders, verdicts, suppliers or extractions.
+    Do NOT build a config overlay for capabilities.profile / triage.keyword_weights /
+    suppliers.catalog / sources / schedule. The "3b multi-tenancy" plan is CANCELLED.
+    account_id on tender_work and account_settings stays (cheap, already there, and harmless);
+    account_settings.KEYS remains VIEW-only knobs.
+    THE AGREED PLAN, not started:
+      (12) Move every setting into the user zone. On an instance the company is the ONLY company,
+           so these are just the normal global config keys and NO schema change is needed - it is
+           a UI move: capabilities.profile, triage.keyword_weights/cpv_weights, thresholds,
+           suppliers.catalog, sources+sites, schedule, pipelines, llm models+pricing, and the
+           ANTHROPIC key (still written to that instance's .env, as routes_settings does today).
+           Afterwards the admin zone keeps ONLY core tests/health/diagnostics (funnel, stage
+           debug pages, pipeline test runs) - it stops being where settings live.
+           NOTE this collides with web/roles.py: today a 'user' is confined to /app* and cannot
+           reach /config. After the move there is nothing in /config a user needs, so the guard
+           stays as-is; the settings must live under /app/settings/*, not be un-guarded.
+      (13) Cross-instance admin overview: one page listing every company instance and what it is
+           doing. OPEN DESIGN QUESTION for Victor - read each instance's SQLite read-only (simple,
+           requires co-location on one host) or HTTP to each instance's /healthz plus a new
+           summary endpoint (works across hosts, needs auth between instances). Needs a registry
+           of instances (a config file listing name + path or URL).
+      (14) Provisioning script for a new company: directory, venv, .env, port, systemd unit,
+           db init, first admin account.
+
 [18b] PYTHON VERSION TRAP: production runs 3.10, agents usually develop on 3.12. Consequences:
     * dt.UTC and datetime.UTC are 3.11+. Use dt.timezone.utc. Same for any 3.11/3.12-only syntax -
       verify_install.py py_compiles everything for exactly this reason; run it before restarting.
@@ -472,13 +513,7 @@ COMPONENT MAP
         bottom of tokens.css: --panel/--panel-2/--chip map onto --surface/-2/-3 and --bg-2 maps
         onto --bg (it is the INPUT background and must stay darker than the panel it sits on -
         aliasing it to --surface makes every field vanish into its card).
-      * MULTI-COMPANY IS SOLVED BY DEPLOYMENT, NOT BY SCHEMA. Decided Jul 2026: one INSTANCE per
-        company (own dir, own tenderengine.db, own .env with that company's ANTHROPIC key, own
-        port). So there is exactly one company per database and per-company settings are just the
-        normal global config. Do NOT add account_id to verdicts/suppliers, do NOT build a config
-        overlay for capabilities.profile / triage.keyword_weights / suppliers.catalog - the old
-        "3b multi-tenancy" plan is CANCELLED. account_id on tender_work and account_settings stays
-        (it is cheap and already there); account_settings.KEYS remains VIEW-only knobs.
+      * MULTI-COMPANY IS SOLVED BY DEPLOYMENT, NOT BY SCHEMA - see [18c].
       * MOBILE: the drawer is CSS-only - a hidden checkbox #navtoggle sits BEFORE .shell in the
         DOM, so `.nav-toggle:checked+.shell aside` opens it and a <label> scrim closes it. Never
         add JS for this, and never reorder the checkbox after .shell or the selector dies. Tables
@@ -586,10 +621,10 @@ OPEN TODOS
   (7) Dashboard on real counters + /app/search + /app/archive — DONE. Remaining:
   (8) tender detail page — DONE; (9) /app/preferences with per-account VIEW settings —
   DONE (this is the honest half of 3b: storage + overlay exist, verdicts still shared).
-  (10) admin restyled onto the shared tokens — DONE; (11) mobile — DONE. Remaining:
-  (12) move the COMPANY settings into the user zone (capabilities.profile,
-  triage.keyword_weights, suppliers.catalog, that instance's ANTHROPIC key), leaving the
-  ENGINE settings (sources, sites, schedule, pipelines, llm.models, pricing) in admin.
+  (10) admin restyled onto the shared tokens — DONE; (11) mobile — DONE.
+  NEXT PROJECT, agreed with Victor Jul 2026 and NOT started — read [18c] before touching it:
+  (12) move EVERY setting into the user zone; (13) build the cross-instance admin overview;
+  (14) script the provisioning of a new company instance.
   the admin skin onto the same tokens (values only, markup untouched, so the HTML-substring tests
   keep passing). Flipping "/" is already done via roles. Read [19] first. Approved look: docs/user_prototype.html.
   NOT built and deliberately out of scope: tasks, contracts, projects, per-person assignees (an
