@@ -10,6 +10,7 @@ HANDLED = {
     "relevance": ("triage.keyword_weights",),
     "ai": (),
     "schedule": ("schedule.jobs", "schedule.timezone"),
+    "suppliers": ("suppliers.catalog",),
 }
 
 
@@ -196,5 +197,71 @@ def schedule_form(store):
             '<button class="btn">Save schedule</button></div></form>')
 
 
+def _cat_block(idx, it, currencies):
+    it = it or {}
+    cur = (it.get("currency") or "MDL").upper()
+    opts = "".join(f'<option value="{c}"{" selected" if c == cur else ""}>{c}</option>'
+                   for c in sorted(set(currencies) | {cur}))
+    rm = ""
+    if it:
+        rm = (f'<label class="switch"><input type="checkbox" name="cat{idx}_remove">'
+              "<span>Remove</span></label>")
+    return (f'<div class="catrow">'
+            f'<input type="hidden" name="cat{idx}_id" value="{_e(it.get("id") or "")}">'
+            '<div class="cat2">'
+            f'<div><label class="catl">What it is</label>'
+            f'<input class="note-in" type="text" name="cat{idx}_denumire" '
+            f'value="{_e(it.get("denumire") or "")}" placeholder="Cameră ANPR 4K edge"></div>'
+            f'<div><label class="catl">Model</label>'
+            f'<input class="note-in" type="text" name="cat{idx}_model" '
+            f'value="{_e(it.get("model") or "")}"></div></div>'
+            '<div class="cat2">'
+            f'<div><label class="catl">Supplier</label>'
+            f'<input class="note-in" type="text" name="cat{idx}_supplier" '
+            f'value="{_e(it.get("supplier") or "")}"></div>'
+            f'<div><label class="catl">Vendor</label>'
+            f'<input class="note-in" type="text" name="cat{idx}_vendor" '
+            f'value="{_e(it.get("vendor") or "")}"></div></div>'
+            '<div class="cat2">'
+            f'<div><label class="catl">Unit price</label>'
+            f'<input class="note-in" type="number" step="any" name="cat{idx}_price" '
+            f'value="{_e(it.get("price") if it else "")}"></div>'
+            f'<div><label class="catl">Currency</label>'
+            f'<select name="cat{idx}_currency">{opts}</select></div></div>'
+            f'<div><label class="catl">Specs</label>'
+            f'<textarea class="note-in" name="cat{idx}_specs" rows="2">'
+            f'{_e(it.get("specs") or "")}</textarea></div>'
+            f'{rm}</div>')
+
+
+def catalog_form(store):
+    items = store.get("suppliers.catalog", []) or []
+    items = [i for i in items if isinstance(i, dict)]
+    currencies = settings_ops.catalog_currencies(store)
+    rates = store.get("suppliers.fx_rates", {}) or {}
+    blocks = [_cat_block(i, it, currencies) for i, it in enumerate(items)]
+    blocks += [_cat_block(len(items) + j, None, currencies) for j in range(2)]
+    bad = sorted({(it.get("currency") or "").upper() for it in items
+                  if not settings_ops._rate_known((it.get("currency") or ""), rates)} - {""})
+    warn = ""
+    if bad:
+        warn = ('<div class="strip bad" style="margin-bottom:12px">'
+                f'<div class="ic">{icon("bang", 3)}</div><div class="tx">'
+                f'<b>No exchange rate for {_e(", ".join(bad))}</b>'
+                "<span>Those line costs cannot be converted, so the margin will be wrong. "
+                "Add the rate under suppliers.fx_rates below.</span></div></div>")
+    return ('<form method="post" action="/app/settings/catalog/save" class="card">'
+            f'<div class="card-h">{icon("check-circle")}<h2>Supplier catalog</h2>'
+            f'<div class="spacer"></div><span class="chip num">{len(items)}</span></div>'
+            f'<div class="card-b">{warn}'
+            '<p class="mut" style="margin:0 0 14px;line-height:1.6">What you can supply and what '
+            'it costs you. The engine matches each tender requirement against this list and works '
+            'out the margin you see on every card. Prices are yours — cost, not the offer. '
+            'Tick <b>Remove</b> or clear the name to delete a line.</p>'
+            + "".join(blocks) + "</div>"
+            '<div class="fb" style="border-top:1px solid var(--line)">'
+            '<button class="btn">Save catalog</button></div></form>')
+
+
 FORMS = {"company": company_form, "relevance": keywords_form, "ai": apikey_form,
-         "schedule": schedule_form}
+         "schedule": schedule_form, "suppliers": catalog_form}

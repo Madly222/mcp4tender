@@ -145,3 +145,69 @@ def save_schedule(form, store, actor="web"):
     store.set("schedule.jobs", other_jobs(store) + [job], actor=actor,
               note="schedule collect job")
     return "schedule saved" + warn
+
+
+def catalog_currencies(store):
+    out = {"MDL"}
+    for k in (store.get("suppliers.fx_rates", {}) or {}):
+        a, _sep, b = str(k).partition("->")
+        out.add(a.strip().upper())
+        out.add(b.strip().upper())
+    return sorted(c for c in out if c)
+
+
+def _slug(text, taken):
+    import re
+    base = re.sub(r"[^a-z0-9]+", "-", str(text or "").lower()).strip("-")[:40] or "item"
+    slug = base
+    n = 2
+    while slug in taken:
+        slug = f"{base}-{n}"
+        n += 1
+    return slug
+
+
+def _rate_known(cur, rates, target="MDL"):
+    cur = (cur or "").upper()
+    if not cur or cur == target:
+        return True
+    return f"{cur}->{target}" in rates or f"{target}->{cur}" in rates
+
+
+def save_catalog(form, store, actor="web"):
+    rates = store.get("suppliers.fx_rates", {}) or {}
+    items = []
+    taken = set()
+    unrated = set()
+    i = 0
+    while f"cat{i}_denumire" in form:
+        idx = i
+        i += 1
+        if form.get(f"cat{idx}_remove") == "on":
+            continue
+        name = (form.get(f"cat{idx}_denumire") or "").strip()
+        if not name:
+            continue
+        cur = (form.get(f"cat{idx}_currency") or "MDL").strip().upper()
+        item_id = (form.get(f"cat{idx}_id") or "").strip() or _slug(name, taken)
+        if item_id in taken:
+            item_id = _slug(name, taken)
+        taken.add(item_id)
+        if not _rate_known(cur, rates):
+            unrated.add(cur)
+        items.append({
+            "id": item_id,
+            "supplier": (form.get(f"cat{idx}_supplier") or "").strip(),
+            "denumire": name,
+            "model": (form.get(f"cat{idx}_model") or "").strip(),
+            "vendor": (form.get(f"cat{idx}_vendor") or "").strip(),
+            "price": numval(form.get(f"cat{idx}_price"), 0),
+            "currency": cur,
+            "specs": (form.get(f"cat{idx}_specs") or "").strip(),
+        })
+    store.set("suppliers.catalog", items, actor=actor, note="edit supplier catalog")
+    msg = f"saved {len(items)} catalog item(s)"
+    if unrated:
+        msg += (" (warning: no exchange rate for " + ", ".join(sorted(unrated))
+                + " - those line costs cannot be converted and the margin will be wrong)")
+    return msg

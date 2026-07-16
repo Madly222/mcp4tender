@@ -214,3 +214,13 @@ async def schedule_save(request: Request):
     form = await request.form()
     return _back("schedule",
                  msg=settings_ops.save_schedule(form, request.state.store, actor="app"))
+
+
+@router.post("/app/settings/catalog/save")
+async def catalog_save(request: Request):
+    stop = _guard(request, "suppliers")
+    if stop:
+        return stop
+    form = await request.form()
+    return _back("suppliers",
+                 msg=settings_ops.save_catalog(form, request.state.store, actor="app"))
