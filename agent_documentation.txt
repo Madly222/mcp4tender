@@ -461,10 +461,16 @@ COMPONENT MAP
            own port would cut itself off. verify_install fails if section_of("web.port") stops
            returning None. To add a new config prefix, add it to a SECTIONS entry - an unplaced
            prefix silently disappears from the UI, so check with keys_in() after adding keys.
-      (12b) TODO: hand-written friendly forms on top of the generated ones for the few keys that
-           deserve them (capabilities.profile, triage.keyword_weights, suppliers.catalog are raw
-           JSON textareas today), plus the ANTHROPIC key (engine/secrets.py writes that instance's
-           .env; the admin /user-settings page already does it - move it, do not re-invent).
+      (12b) PARTLY DONE: friendly forms for capabilities.profile, triage.keyword_weights and the
+           ANTHROPIC key now live in web/user/forms.py and render ABOVE the generated rows on
+           /app/settings/{company,relevance,ai}; keys listed in forms.HANDLED are dropped from the
+           generated list so nothing is editable twice. The PARSING is shared, not copied:
+           web/settings_ops.py holds save_company/save_keywords/save_apikey/run_key_test and BOTH
+           the admin /user-settings routes and the user zone call it - fix a parsing bug once.
+           settings_ops calls health.check_api_key THROUGH the module on purpose, so tests patch
+           engine.health.check_api_key and the seam survives the call moving zones.
+           STILL RAW JSON: suppliers.catalog, llm.models, llm.pricing, triage.cpv_weights,
+           triage.value_band, schedule.jobs, sources.* - give them forms next.
       (13) Cross-instance admin overview: one page listing every company instance and what it is
            doing. SETTLED: read each instance's SQLite READ-ONLY (file: URI with mode=ro). Safe
            because db.connect sets journal_mode=WAL and busy_timeout=5000, so a reader never

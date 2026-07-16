@@ -7,7 +7,8 @@ from fastapi.responses import RedirectResponse
 
 from engine.health import (CONSOLE_URL, FAIL, OK, STAGE_KEYS, check_api_key, collect_issues,
                            llm_status, recent_llm_errors, spend, spend_by_stage)
-from engine.secrets import get_api_key, key_source, mask, set_api_key
+from engine.secrets import get_api_key, key_source, mask
+from web import settings_ops
 from web.render import _e, _layout, _ts
 
 router = APIRouter()
@@ -397,26 +398,7 @@ async def save_company(request: Request):
     if request.state.readonly:
         return _redir(err="read-only mode")
     f = await request.form()
-    store = request.state.store
-    p = dict(store.get("capabilities.profile", {}) or {})
-    p["company"] = (f.get("company") or "").strip()
-    p["country"] = (f.get("country") or "").strip()
-    p["experience_years"] = int(_numval(f.get("experience_years"), 0))
-    p["eu_arm"] = (f.get("eu_arm") or "").strip()
-    p["verticals"] = _lines(f.get("verticals"))
-    p["services"] = _lines(f.get("services"))
-    p["certifications"] = _lines(f.get("certifications"))
-    p["references"] = _lines(f.get("references"))
-    p["partner_network"] = _lines(f.get("partner_network"))
-    p["notes"] = (f.get("notes") or "").strip()
-    vendors = {}
-    for ln in _lines(f.get("vendors")):
-        k, sep, v = ln.partition("=")
-        if k.strip():
-            vendors[k.strip()] = v.strip()
-    p["vendor_partnerships"] = vendors
-    store.set("capabilities.profile", p, actor="web", note="edit company (user settings)")
-    return _redir(msg="company saved")
+    return _redir(msg=settings_ops.save_company(f, request.state.store))
 
 
 @router.post("/user-settings/keywords")
@@ -424,24 +406,10 @@ async def save_keywords(request: Request):
     if request.state.readonly:
         return _redir(err="read-only mode")
     f = await request.form()
-    weights = {}
-    i = 0
-    while f"kw{i}" in f:
-        k = (f.get(f"kw{i}") or "").strip().lower()
-        w = f.get(f"wt{i}")
-        i += 1
-        if not k or w in (None, ""):
-            continue
-        try:
-            wv = float(w)
-        except (TypeError, ValueError):
-            continue
-        weights[k] = int(wv) if wv == int(wv) else wv
-    if not weights:
-        return _redir(err="no keywords to save")
-    request.state.store.set("triage.keyword_weights", weights, actor="web",
-                            note="edit keywords (user settings)")
-    return _redir(msg=f"saved {len(weights)} keyword(s)")
+    try:
+        return _redir(msg=settings_ops.save_keywords(f, request.state.store))
+    except settings_ops.SettingsError as ex:
+        return _redir(err=str(ex))
 
 
 @router.post("/user-settings/tuning")
@@ -469,32 +437,21 @@ async def save_apikey(request: Request):
     if request.state.readonly:
         return _redir(err="read-only mode")
     f = await request.form()
-    value = (f.get("api_key") or "").strip()
-    if not value:
-        return _redir(msg="key unchanged")
-    if not value.startswith("sk-"):
-        return _redir(err="that does not look like an API key (expected sk-...)")
-    path = set_api_key(value)
-    return _redir(msg=f"key saved to {path} and applied without restart")
+    try:
+        return _redir(msg=settings_ops.save_apikey(f))
+    except settings_ops.SettingsError as ex:
+        return _redir(err=str(ex))
 
 
 @router.post("/user-settings/test-key")
 async def test_key(request: Request):
     if request.state.readonly:
         return _redir(err="read-only mode")
-    import time
     f = await request.form()
-    typed = (f.get("api_key") or "").strip()
-    store = request.state.store
-    model = (store.get("llm.models", {}) or {}).get("default")
-    r = check_api_key(model=model, key=typed or None)
-    store.set("llm.last_key_check",
-              {"status": r["status"], "code": r.get("code"), "detail": r.get("detail"),
-               "raw": r.get("raw"), "model": model, "at": time.time()},
-              actor="web", note="test key result")
-    if r["status"] == "ok":
-        return _redir(msg="key works")
-    return _redir(err=f"{r['code']}: {r['detail']}")
+    try:
+        return _redir(msg=settings_ops.run_key_test(f, request.state.store))
+    except settings_ops.SettingsError as ex:
+        return _redir(err=str(ex))
 
 
 @router.post("/user-settings/models")
