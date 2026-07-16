@@ -117,6 +117,11 @@ def _bool_dot(value):
             f'{"on" if value else "off"}')
 
 
+def _theme(request):
+    from engine import user_settings
+    return user_settings.theme_of(request)
+
+
 def _tokens():
     from web.assets import asset_version
     return ('<link rel="stylesheet" href="/static/tokens.css?v=%s">'
@@ -138,7 +143,7 @@ def _layout(request, title, body):
         ro += (f' &middot; <span class="mut">{who}</span> '
                f'&middot; <a href="/logout">sign out</a>')
     return HTMLResponse(
-        f"<!doctype html><html><head><meta charset=utf-8>"
+        f'<!doctype html><html data-theme="{_theme(request)}"><head><meta charset=utf-8>'
         f"<meta name=viewport content='width=device-width,initial-scale=1'>"
         f"<title>{brand} &middot; {_e(title)}</title>{_tokens()}"
         f"<style>{CSS}</style></head><body>"
@@ -173,7 +178,7 @@ def _login(request, error=""):
         fields = (f"<p class=mut>Access protected by token.</p>"
                   f"<input type=password name=token placeholder='token' autofocus>")
     return HTMLResponse(
-        f"<!doctype html><html><head><meta charset=utf-8>"
+        f'<!doctype html><html data-theme="{_theme(request)}"><head><meta charset=utf-8>'
         f"<meta name=viewport content='width=device-width,initial-scale=1'>"
         f"<title>{brand} &middot; login</title>{_tokens()}"
         f"<style>{CSS}</style></head><body>"

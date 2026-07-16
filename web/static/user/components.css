@@ -226,3 +226,9 @@ border-radius:var(--r-sm);color:var(--fg);padding:6px 9px;font:400 12.5px/1.4 va
 .tbl3-h{color:var(--mut-2);font-size:10.5px;font-weight:700;letter-spacing:.07em;
 text-transform:uppercase;margin-bottom:5px}
 @media(max-width:760px){.tbl3{grid-template-columns:1fr 1fr}}
+.picks{display:flex;gap:8px;flex-wrap:wrap}
+.pick{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:var(--r-sm);
+background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);cursor:pointer;font-size:13px}
+.pick:hover{background:var(--surface-3)}
+.pick input{accent-color:var(--acc);width:15px;height:15px}
+.pick:has(input:checked){background:var(--acc-weak);box-shadow:inset 0 0 0 1px var(--acc-line)}

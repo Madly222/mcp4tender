@@ -79,8 +79,11 @@ if "tender_work" not in SCHEMA_WORK:
     print("STALE engine/db.py"); sys.exit(1)
 from workflows.work import ids_in  # noqa: F401
 from engine.user_settings import KEYS as _UK
-if "results.new_days" not in _UK:
+if "ui.theme" not in _UK:
     print("STALE engine/user_settings.py"); sys.exit(1)
+if any(k.startswith(("results.", "triage.", "llm.")) for k in _UK):
+    print("BAD engine/user_settings.py: core knobs belong in Company settings")
+    sys.exit(1)
 from web.user.settings_meta import section_of
 if section_of("web.port") is not None:
     print("STALE web/user/settings_meta.py: web.* must stay admin-only")

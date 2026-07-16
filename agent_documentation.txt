@@ -486,6 +486,22 @@ COMPONENT MAP
            None when fx_rates has no rate, so the line cost silently vanishes and the margin shown
            on every card is wrong. A typo used to be enough. save_catalog also warns which
            currencies have no rate, and the form repeats it as a red strip.
+      (12f) DONE: the two menu items no longer overlap. Preferences = ONLY things about how the
+           app looks on one person's screen (engine/user_settings.py KEYS is ui.theme and nothing
+           else). Everything that changes which tenders arrive, how they score, when they are
+           collected or what they cost is Company settings. Do not put a core knob back into
+           user_settings.KEYS - that is the duplication that caused this.
+           The per-account config OVERLAY (Overlay/view/effective-with-store-fallback) is GONE
+           along with results.new_days as a personal knob; partition() takes the plain store again.
+           THEME: one attribute, <html data-theme="light">, set by both layouts, plus a
+           :root[data-theme="light"] block in web/static/tokens.css. That is the whole feature -
+           it is cheap ONLY because tokens.css is the single :root, so never re-introduce a second
+           one. Any new colour must be a token or the light theme silently breaks; there is a test
+           asserting no rgba(10,13,18 / #8a5cff survives in base.css, and another asserting every
+           palette token has a light override.
+           LANGUAGE is NOT done and is not a settings row: every UI string is hardcoded English in
+           the renderers. It needs an extraction pass first. Do not add a language picker that
+           does nothing.
       (12e) DONE: NO RAW JSON LEFT except sites.*. web/user/dictforms.py is a SPEC-DRIVEN builder,
            not twelve hand-written forms - SPECS[key] picks one of four kinds and the renderer
            does the rest. Add a spec, get a form; there is no reason to hand-write another one:
