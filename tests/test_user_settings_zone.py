@@ -64,16 +64,22 @@ def test_a_user_role_can_reach_settings(tmp_path, monkeypatch):
     assert c.get("/app/settings").status_code == 200
     assert c.get("/app/settings/company").status_code == 200
     assert c.get("/config").status_code == 403
-def test_section_shows_keys_with_descriptions(tmp_path, monkeypatch):
+def test_relevance_section_is_fully_form_driven(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"s3.db")
     accounts.create(conn, "rl", "password1", role="user"); conn.close()
     h = _login(p).get("/app/settings/relevance").text
-    assert "triage.cpv_weights" in h and "triage.value_band" in h
-    assert "Score added per CPV code prefix" in h
+    assert "Search keywords" in h and "CPV weights" in h
+    assert "Score cut-offs" in h and "Value band" in h
+    assert "Everything else here" not in h, "every key here has a real form now"
     assert "capabilities.profile" not in h
-    assert "triage.keyword_weights" not in h, "the friendly form owns this key now"
-    assert "Everything else here" in h
+def test_generated_rows_still_carry_their_description(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    p, conn = _fresh(tmp_path,"s3b.db")
+    accounts.create(conn, "rl", "password1", role="user"); conn.close()
+    h = _login(p).get("/app/settings/reading").text
+    assert "documents.timeout" in h
+    assert "HTTP timeout (seconds) when downloading a tender document." in h
 def test_saving_a_scalar_and_a_json_key(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"s4.db")

@@ -486,9 +486,21 @@ COMPONENT MAP
            None when fx_rates has no rate, so the line cost silently vanishes and the margin shown
            on every card is wrong. A typo used to be enough. save_catalog also warns which
            currencies have no rate, and the form repeats it as a red strip.
-           STILL RAW JSON: llm.models, llm.pricing, triage.cpv_weights, triage.value_band,
-           sources.*, suppliers.fx_rates - these are small dicts the generated editor handles
-           acceptably; do them only if Victor asks.
+      (12e) DONE: NO RAW JSON LEFT except sites.*. web/user/dictforms.py is a SPEC-DRIVEN builder,
+           not twelve hand-written forms - SPECS[key] picks one of four kinds and the renderer
+           does the rest. Add a spec, get a form; there is no reason to hand-write another one:
+             pairs  - free {name: value} rows (triage.cpv_weights, suppliers.fx_rates,
+                      llm.models, applicability.model_by_bucket, supervisor.rank_weights)
+             fields - a fixed dict edited sub-key by sub-key, widget chosen from the CURRENT
+                      value's type (triage.value_band, triage.bucket_thresholds, sources.mtender,
+                      sources.genericweb). save_fields iterates the STORED dict, never the form,
+                      so a forged field cannot inject a new sub-key - there is a test for it.
+             table  - {name: {col: num}} (llm.pricing)
+           Same rules as the schedule form: an unticked switch means OFF, and an empty name
+           deletes the row. Parsers live in settings_ops (save_pairs/save_fields/save_table).
+           REMAINING: sites.tenders / sites.partners are the last raw JSON. They are NOT a form -
+           web/routes_sites.py is a whole CRUD page (add/remove/toggle/auth/reset-cursor). Moving
+           it into the user zone is a page move, step (12f).
       (13) Cross-instance admin overview: one page listing every company instance and what it is
            doing. SETTLED: read each instance's SQLite READ-ONLY (file: URI with mode=ro). Safe
            because db.connect sets journal_mode=WAL and busy_timeout=5000, so a reader never

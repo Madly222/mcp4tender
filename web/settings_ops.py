@@ -211,3 +211,62 @@ def save_catalog(form, store, actor="web"):
         msg += (" (warning: no exchange rate for " + ", ".join(sorted(unrated))
                 + " - those line costs cannot be converted and the margin will be wrong)")
     return msg
+
+
+def save_pairs(form, store, key, numeric, actor="web"):
+    out = {}
+    i = 0
+    while f"k{i}" in form:
+        name = (form.get(f"k{i}") or "").strip()
+        raw = form.get(f"v{i}")
+        i += 1
+        if not name or raw in (None, ""):
+            continue
+        if numeric:
+            try:
+                out[name] = numval(raw, None)
+            except Exception:
+                continue
+            if out[name] is None:
+                del out[name]
+        else:
+            out[name] = str(raw).strip()
+    if not out:
+        raise SettingsError("nothing to save — at least one line is required")
+    store.set(key, out, actor=actor, note=f"edit {key}")
+    return f"saved {len(out)} line(s) in {key}"
+
+
+def save_fields(form, store, key, actor="web"):
+    current = dict(store.get(key, {}) or {})
+    out = {}
+    for sub, old in current.items():
+        raw = form.get("f_" + sub)
+        if isinstance(old, bool):
+            out[sub] = raw == "on"
+        elif isinstance(old, int):
+            out[sub] = int(numval(raw, old))
+        elif isinstance(old, float):
+            out[sub] = float(numval(raw, old))
+        elif isinstance(old, list):
+            out[sub] = [s.strip() for s in str(raw or "").split(",") if s.strip()]
+        else:
+            out[sub] = (raw if raw is not None else old) or ""
+    store.set(key, out, actor=actor, note=f"edit {key}")
+    return f"saved {key}"
+
+
+def save_table(form, store, key, cols, actor="web"):
+    out = {}
+    i = 0
+    while f"k{i}" in form:
+        name = (form.get(f"k{i}") or "").strip()
+        idx = i
+        i += 1
+        if not name:
+            continue
+        out[name] = {c: numval(form.get(f"c{idx}_{c}"), 0) for c in cols}
+    if not out:
+        raise SettingsError("nothing to save — at least one row is required")
+    store.set(key, out, actor=actor, note=f"edit {key}")
+    return f"saved {len(out)} row(s) in {key}"
