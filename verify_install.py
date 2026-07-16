@@ -11,7 +11,8 @@ REQUIRED = [
     "web/server.py", "web/render.py", "web/config_meta.py", "web/assets.py", "web/roles.py",
     "web/user/layout.py", "web/user/nav.py", "web/user/routes_home.py",
     "web/user/errors.py", "web/user/cards.py", "web/user/routes_inbox.py",
-    "web/user/routes_qualified.py", "web/user/routes_browse.py", "web/user/routes_tender.py", "web/user/routes_prefs.py",
+    "web/user/routes_qualified.py", "web/user/routes_browse.py", "web/user/routes_tender.py", "web/user/routes_prefs.py", "web/user/routes_settings.py",
+    "web/user/settings_meta.py",
     "engine/user_settings.py",
     "workflows/work.py",
     "web/static/tokens.css", "web/static/user/base.css",
@@ -79,5 +80,9 @@ from workflows.work import ids_in  # noqa: F401
 from engine.user_settings import KEYS as _UK
 if "results.new_days" not in _UK:
     print("STALE engine/user_settings.py"); sys.exit(1)
+from web.user.settings_meta import section_of
+if section_of("web.port") is not None:
+    print("STALE web/user/settings_meta.py: web.* must stay admin-only")
+    sys.exit(1)
 print("versions OK")
 print("\nInstall looks good. Restart the service.")

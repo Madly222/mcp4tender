@@ -451,16 +451,20 @@ COMPONENT MAP
     account_id on tender_work and account_settings stays (cheap, already there, and harmless);
     account_settings.KEYS remains VIEW-only knobs.
     THE AGREED PLAN, not started:
-      (12) Move every setting into the user zone. On an instance the company is the ONLY company,
-           so these are just the normal global config keys and NO schema change is needed - it is
-           a UI move: capabilities.profile, triage.keyword_weights/cpv_weights, thresholds,
-           suppliers.catalog, sources+sites, schedule, pipelines, llm models+pricing, and the
-           ANTHROPIC key (still written to that instance's .env, as routes_settings does today).
-           Afterwards the admin zone keeps ONLY core tests/health/diagnostics (funnel, stage
-           debug pages, pipeline test runs) - it stops being where settings live.
-           NOTE this collides with web/roles.py: today a 'user' is confined to /app* and cannot
-           reach /config. After the move there is nothing in /config a user needs, so the guard
-           stays as-is; the settings must live under /app/settings/*, not be un-guarded.
+      (12a) DONE: /app/settings hub + /app/settings/{section}. 72 of the 81 config keys are now
+           editable in the user zone, GENERATED from the store rather than hand-written: sections
+           live in web/user/settings_meta.py (prefix -> section), the widget is chosen by
+           vtype_of(current value) - bool BEFORE int, since bool is an int subclass - and saving
+           goes through store.set(), so config versioning/rollback still works (actor="app").
+           The 9 web.* keys are deliberately NOT exposed: port/host/token/read_only/run_scheduler
+           are how the instance is SERVED, not settings about tenders, and a company editing its
+           own port would cut itself off. verify_install fails if section_of("web.port") stops
+           returning None. To add a new config prefix, add it to a SECTIONS entry - an unplaced
+           prefix silently disappears from the UI, so check with keys_in() after adding keys.
+      (12b) TODO: hand-written friendly forms on top of the generated ones for the few keys that
+           deserve them (capabilities.profile, triage.keyword_weights, suppliers.catalog are raw
+           JSON textareas today), plus the ANTHROPIC key (engine/secrets.py writes that instance's
+           .env; the admin /user-settings page already does it - move it, do not re-invent).
       (13) Cross-instance admin overview: one page listing every company instance and what it is
            doing. SETTLED: read each instance's SQLite READ-ONLY (file: URI with mode=ro). Safe
            because db.connect sets journal_mode=WAL and busy_timeout=5000, so a reader never
