@@ -421,8 +421,18 @@ COMPONENT MAP
 [18c] MULTI-COMPANY: SOLVED BY DEPLOYMENT, NOT BY SCHEMA (decided Jul 2026, re-confirmed after
     Victor asked for per-company sources/schedule/models/pricing too). If EVERY setting is
     per-company then companies share nothing but the code - and storage that shares nothing is a
-    separate database. So: ONE INSTANCE PER COMPANY. Own directory, own tenderengine.db, own .env
-    with that company's ANTHROPIC key, own port, own systemd unit.
+    separate database. So: ONE INSTANCE PER COMPANY. INSTANCE IS NOT A VM. Everything runs on ONE
+    machine dedicated to the project; an instance is a data directory + a systemd unit + a port.
+    ONE code checkout serves all of them, so `git pull` still updates everyone at once:
+        ~/tenderengine/          the only checkout, the only .venv
+        ~/instances/<company>/   data/tenderengine.db + .env   (one dir per company)
+    THE CODE ALREADY SUPPORTS THIS - verified, no change needed:
+      * DB_PATH        <- env TENDERENGINE_DB          (app.py:18)
+      * .env location  <- env TENDERENGINE_HOME        (engine/secrets.py env_path)
+      * port           <- store.get("web.port")        (app.py cmd_web) and the store is read from
+                          THAT instance's db, so the port is per-instance for free
+    A unit therefore only needs TENDERENGINE_HOME, TENDERENGINE_DB and EnvironmentFile pointed at
+    the instance dir, with WorkingDirectory/ExecStart still on the shared checkout.
     Why this and not a multi-tenant core, in case a future agent wants to "improve" it:
       * The engine's real work is a BACKGROUND thread (app.py _start_scheduler_thread), which owns
         its own ConfigStore loaded once at startup and fires run_pipeline() on a 30s timer. Nobody
@@ -452,12 +462,16 @@ COMPONENT MAP
            reach /config. After the move there is nothing in /config a user needs, so the guard
            stays as-is; the settings must live under /app/settings/*, not be un-guarded.
       (13) Cross-instance admin overview: one page listing every company instance and what it is
-           doing. OPEN DESIGN QUESTION for Victor - read each instance's SQLite read-only (simple,
-           requires co-location on one host) or HTTP to each instance's /healthz plus a new
-           summary endpoint (works across hosts, needs auth between instances). Needs a registry
-           of instances (a config file listing name + path or URL).
-      (14) Provisioning script for a new company: directory, venv, .env, port, systemd unit,
-           db init, first admin account.
+           doing. SETTLED: read each instance's SQLite READ-ONLY (file: URI with mode=ro). Safe
+           because db.connect sets journal_mode=WAL and busy_timeout=5000, so a reader never
+           blocks the owning instance's writer. All instances live on one host, so no HTTP layer
+           and no inter-instance auth. Needs a registry - a config file listing name + data dir.
+           If instances ever spread across hosts this flips to HTTP + a summary endpoint; until
+           then do not build that.
+      (14) Provisioning a new company is small BECAUSE of the above: mkdir the instance dir,
+           write .env with that company's key, write a systemd unit from a template with the three
+           env vars, `app.py user add` the first account, set web.port in that db. No venv, no
+           second checkout. A shell script plus a unit template, not a code change.
 
 [18b] PYTHON VERSION TRAP: production runs 3.10, agents usually develop on 3.12. Consequences:
     * dt.UTC and datetime.UTC are 3.11+. Use dt.timezone.utc. Same for any 3.11/3.12-only syntax -
