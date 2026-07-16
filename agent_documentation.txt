@@ -469,8 +469,17 @@ COMPONENT MAP
            the admin /user-settings routes and the user zone call it - fix a parsing bug once.
            settings_ops calls health.check_api_key THROUGH the module on purpose, so tests patch
            engine.health.check_api_key and the seam survives the call moving zones.
+      (12c) DONE for the schedule: /app/settings/schedule has day/time/source checkboxes instead
+           of raw schedule.jobs JSON. settings_ops.save_schedule is shared with admin /schedule.
+           Two behaviours worth knowing before you "fix" them: an UNTICKED box means OFF, not
+           unchanged (the form always writes the whole collect job), and no source ticked means
+           ALL sources. other_jobs() preserves non-collect jobs untouched - keep that.
+           parse_times now accepts a single-digit hour ("6:00" -> "06:00"); the old regex demanded
+           two digits, which made the existing "%02d" normalisation dead code and silently threw
+           the user's time away. Hours > 23 are still dropped.
            STILL RAW JSON: suppliers.catalog, llm.models, llm.pricing, triage.cpv_weights,
-           triage.value_band, schedule.jobs, sources.* - give them forms next.
+           triage.value_band, sources.* - give them forms next. suppliers.catalog is the most
+           valuable (it drives the margin figure the user sees on every card).
       (13) Cross-instance admin overview: one page listing every company instance and what it is
            doing. SETTLED: read each instance's SQLite READ-ONLY (file: URI with mode=ro). Safe
            because db.connect sets journal_mode=WAL and busy_timeout=5000, so a reader never

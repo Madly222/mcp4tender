@@ -5,12 +5,13 @@ import re
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
+from web import settings_ops
 from web.render import _e, _layout
 
 router = APIRouter()
 
-_DAYS = [(0, "Mon"), (1, "Tue"), (2, "Wed"), (3, "Thu"), (4, "Fri"), (5, "Sat"), (6, "Sun")]
-_KNOWN_SOURCES = [("mtender", "MTender (no tokens)"), ("genericweb", "Generic web (uses tokens)")]
+_DAYS = settings_ops.DAYS
+_KNOWN_SOURCES = settings_ops.KNOWN_SOURCES
 _TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
 
 
@@ -156,33 +157,9 @@ to <b>New</b>.</p>
 
 @router.post("/schedule")
 async def schedule_save(request: Request):
-    store = request.state.store
     if request.state.readonly:
         return RedirectResponse("/schedule", status_code=303)
     form = await request.form()
-    tz = (form.get("timezone") or "").strip()
-    enabled = form.get("enabled") == "on"
-    days = [i for i, _ in _DAYS if form.get(f"day_{i}") == "on"]
-    times = _parse_times(form.get("times") or "")
-    sources = [k for k, _ in _KNOWN_SOURCES if form.get(f"src_{k}") == "on"] or \
-        [k for k, _ in _KNOWN_SOURCES]
-    analyze = form.get("analyze") == "on"
-
-    warn = ""
-    if tz:
-        try:
-            from zoneinfo import ZoneInfo
-            ZoneInfo(tz)
-        except Exception:
-            warn = f" (warning: timezone {tz} not recognised, using server local time)"
-    if enabled and not times:
-        warn += " (warning: no valid run times, schedule will not fire)"
-
-    job = {"kind": "collect", "sources": sources, "days": days,
-           "at": times, "analyze": analyze, "enabled": enabled}
-    store.set("schedule.timezone", tz, actor="web", note="schedule.timezone")
-    store.set("schedule.jobs", _other_jobs(store) + [job], actor="web", note="schedule collect job")
-
+    msg = settings_ops.save_schedule(form, request.state.store)
     from urllib.parse import urlencode
-    return RedirectResponse("/schedule?" + urlencode({"msg": "schedule saved" + warn}),
-                            status_code=303)
+    return RedirectResponse("/schedule?" + urlencode({"msg": msg}), status_code=303)
