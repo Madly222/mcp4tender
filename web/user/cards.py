@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from engine.dateparse import humanize, parse_date
+from engine.dateparse import day_end_ts, humanize, parse_date
 from web.render import _e, _loose, source_url
 from web.user.icons import icon
 from workflows import work
@@ -42,7 +42,7 @@ def _stamp(when):
 
 
 def _left(raw, now):
-    ts = _stamp(parse_date(raw))
+    ts = day_end_ts(raw)
     if ts is None:
         return ""
     days = int((ts - now) // 86400)
@@ -72,11 +72,13 @@ def cell_ref(row):
     return f'<td><span class="t-ref">{ext}</span><span class="chip plain">{src}</span></td>'
 
 
-def cell_tender(row, nj, portal=None):
+def cell_tender(row, nj, portal=None, extra=""):
     url = source_url(row["source"], row["external_id"], portal)
     title = _e(nj.get("title") or "(untitled)")
     href = f' href="/app/tender/{row["id"]}"'
     tags = []
+    if extra:
+        tags.append(extra)
     if url:
         tags.append(f'<a class="chip plain" href="{_e(url)}" target=_blank>portal</a>')
     cpv = nj.get("cpv") or []

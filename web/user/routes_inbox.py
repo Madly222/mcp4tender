@@ -6,7 +6,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 
 from web.render import _e
-from web.user import cards
+from web.user import cards, lifecycle
 from web.user.counts import nav_counts
 from web.user.icons import icon
 from web.user.layout import render
@@ -26,6 +26,8 @@ SELECT = (
     "LEFT JOIN extractions e ON e.tender_id=t.id "
     "WHERE (av.verdict IN ('can','partial') "
     "OR (av.verdict IS NULL AND tv.verdict='relevant'))")
+
+ORDER = " ORDER BY t.created_at DESC, t.id DESC"
 
 MATCH_FILTERS = {
     "": "Any match",
@@ -85,21 +87,35 @@ def inbox(request: Request, q: str = "", match: str = ""):
     conn, store = request.state.conn, request.state.store
     acct_id = work.account_id(request)
     portal = cards.portal_of(store)
-    rows = conn.execute(SELECT + " LIMIT 3000").fetchall()
+    rows = conn.execute(SELECT + ORDER + " LIMIT 3000").fetchall()
     buckets = partition(rows, store)
     decided = work.decided_ids(conn, acct_id)
-    fresh = [r for r in buckets["new"] if r["id"] not in decided]
-    shown = [r for r in fresh if _keep(r, q, match)]
+    closed = lifecycle.closed_statuses(store)
+    fresh = []
+    hidden = 0
+    for r in buckets["new"]:
+        if r["id"] in decided:
+            continue
+        nj = cards.nj_of(r)
+        state = lifecycle.state_of(nj.get("status"),
+                                   cards.deadline_of(r, nj)[0], closed)
+        if state == lifecycle.CLOSED:
+            hidden += 1
+            continue
+        fresh.append((r, state))
+    shown = [(r, st) for r, st in fresh if _keep(r, q, match)]
     now = time.time()
 
     if shown:
+        back = request.url.path + ("?" + str(request.url.query)
+                                   if request.url.query else "")
         body_rows = "".join(
-            "<tr>" + cards.cell_ref(r) + cards.cell_tender(r, cards.nj_of(r), portal)
+            "<tr>" + cards.cell_ref(r) + cards.cell_tender(r, cards.nj_of(r), portal,
+                                                          extra=lifecycle.chip(st))
             + cards.cell_value(cards.nj_of(r)) + cards.cell_docs(cards.nj_of(r))
             + cards.cell_match(r) + cards.cell_when(r, cards.nj_of(r), now)
-            + cards.cell_decide(r, request.url.path + ("?" + str(request.url.query)
-                                                       if request.url.query else ""))
-            + "</tr>" for r in shown)
+            + cards.cell_decide(r, back)
+            + "</tr>" for r, st in shown)
         table = (
             '<div class="card"><table><thead><tr>'
             '<th style="width:150px">Reference</th><th>Tender</th>'
@@ -114,8 +130,14 @@ def inbox(request: Request, q: str = "", match: str = ""):
         table = ('<div class="card"><div class="empty">Inbox is clear. '
                  'Everything the daily check found has been decided.</div></div>')
 
+    note = ""
+    if hidden:
+        note = (f'<div class="note" style="margin:0 0 12px">{icon("info")}'
+                f'{hidden} tender(s) hidden — bidding has closed on them. They are still in '
+                '<a href="/app/search">Search</a>.</div>')
+
     counts = nav_counts(conn, store, acct_id)
-    lede = ("New finds from the daily check. Keep what is worth a bid — kept tenders "
-            "move to Qualified. Skipped ones stop showing up here.")
-    return render(request, "Tender inbox", _filters(q, match) + table,
+    lede = ("New finds from the daily check, newest first. Only tenders you can still bid on "
+            "are listed. Keep what is worth a bid — kept tenders move to Qualified.")
+    return render(request, "Tender inbox", _filters(q, match) + note + table,
                   heading="Tender inbox", heading_icon="inbox", lede=lede, counts=counts)
