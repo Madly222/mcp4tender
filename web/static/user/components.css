@@ -232,3 +232,6 @@ background:var(--surface-2);box-shadow:inset 0 0 0 1px var(--line);cursor:pointe
 .pick:hover{background:var(--surface-3)}
 .pick input{accent-color:var(--acc);width:15px;height:15px}
 .pick:has(input:checked){background:var(--acc-weak);box-shadow:inset 0 0 0 1px var(--acc-line)}
+.note.sweep{display:flex;align-items:center;gap:10px}
+.note.sweep span{flex:1}
+.note.sweep .btn{flex:none}

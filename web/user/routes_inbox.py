@@ -82,27 +82,30 @@ def inbox_stage(request: Request, tender_id: int, stage: str = Form("qualified")
     return RedirectResponse(back if back.startswith("/app") else "/app/inbox", status_code=303)
 
 
+@router.post("/app/inbox/sweep")
+def inbox_sweep(request: Request):
+    conn, store = request.state.conn, request.state.store
+    if store.get("web.read_only"):
+        return RedirectResponse("/app/inbox", status_code=303)
+    acct_id = work.account_id(request)
+    rows = conn.execute(SELECT + ORDER + " LIMIT 3000").fetchall()
+    _kept, closed_ids = lifecycle.split(partition(rows, store)["new"], store,
+                                        work.decided_ids(conn, acct_id))
+    for tid in closed_ids:
+        work.set_stage(conn, tid, acct_id, "skipped", note="bidding closed")
+    return RedirectResponse(f"/app/inbox?swept={len(closed_ids)}", status_code=303)
+
+
 @router.get("/app/inbox")
-def inbox(request: Request, q: str = "", match: str = ""):
+def inbox(request: Request, q: str = "", match: str = "", swept: str = ""):
     conn, store = request.state.conn, request.state.store
     acct_id = work.account_id(request)
     portal = cards.portal_of(store)
     rows = conn.execute(SELECT + ORDER + " LIMIT 3000").fetchall()
     buckets = partition(rows, store)
     decided = work.decided_ids(conn, acct_id)
-    closed = lifecycle.closed_statuses(store)
-    fresh = []
-    hidden = 0
-    for r in buckets["new"]:
-        if r["id"] in decided:
-            continue
-        nj = cards.nj_of(r)
-        state = lifecycle.state_of(nj.get("status"),
-                                   cards.deadline_of(r, nj)[0], closed)
-        if state == lifecycle.CLOSED:
-            hidden += 1
-            continue
-        fresh.append((r, state))
+    fresh, closed_ids = lifecycle.split(buckets["new"], store, decided)
+    hidden = len(closed_ids)
     shown = [(r, st) for r, st in fresh if _keep(r, q, match)]
     now = time.time()
 
@@ -131,10 +134,18 @@ def inbox(request: Request, q: str = "", match: str = ""):
                  'Everything the daily check found has been decided.</div></div>')
 
     note = ""
+    if swept:
+        note = ('<div class="note" style="margin:0 0 12px;border-color:var(--ok-line);'
+                f'background:var(--ok-weak)">{icon("check")}'
+                f'<span>{_e(swept)} closed tender(s) moved to Skipped. They are listed under '
+                '<a href="/app/qualified?stage=skipped">Skipped</a> if you need them back.'
+                '</span></div>')
     if hidden:
-        note = (f'<div class="note" style="margin:0 0 12px">{icon("info")}'
-                f'{hidden} tender(s) hidden — bidding has closed on them. They are still in '
-                '<a href="/app/search">Search</a>.</div>')
+        note = ('<form method="post" action="/app/inbox/sweep" class="note sweep" '
+                'style="margin:0 0 12px">'
+                f'{icon("info")}<span>{hidden} tender(s) hidden — bidding has closed on them. '
+                'They stay in <a href="/app/search">Search</a>.</span>'
+                '<button class="btn ghost sm">Skip them for good</button></form>')
 
     counts = nav_counts(conn, store, acct_id)
     lede = ("New finds from the daily check, newest first. Only tenders you can still bid on "

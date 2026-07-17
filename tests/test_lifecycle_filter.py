@@ -123,3 +123,60 @@ def test_day_end_ts_uses_the_end_of_the_day():
     got = dt.datetime.fromtimestamp(ts)
     assert (got.hour, got.minute, got.second) == (23, 59, 59)
     assert day_end_ts(None) is None and day_end_ts("nonsense") is None
+def test_badge_matches_the_list(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    p, conn = _fresh(tmp_path,"n1.db")
+    _add(conn, "n1", "Viu", deadline_days=6)
+    _add(conn, "n2", "Contract semnat", status="complete", deadline_days=20)
+    _add(conn, "n3", "Anulat", status="cancelled", deadline_days=15)
+    conn.close()
+    from web.user.counts import nav_counts
+    from engine.config_store import ConfigStore
+    conn = db.connect(p); s = ConfigStore(conn); s.reload()
+    assert nav_counts(conn, s, 1)["inbox"] == 1, "the badge must not count what the list hides"
+    conn.close()
+def test_sweep_skips_only_the_closed_ones(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    p, conn = _fresh(tmp_path,"n2.db")
+    live = _add(conn, "s1", "Viu", deadline_days=6)
+    dead = _add(conn, "s2", "Contract semnat", status="complete", deadline_days=20)
+    conn.close()
+    c = _login(p)
+    r = c.post("/app/inbox/sweep")
+    assert r.status_code == 303 and "swept=1" in r.headers["location"]
+    from workflows import work
+    conn = db.connect(p)
+    assert work.stage_of(conn, dead, 1) == "skipped"
+    assert work.stage_of(conn, live, 1) == "inbox", "a live tender must never be swept"
+    conn.close()
+    h = c.get("/app/inbox?swept=1").text
+    assert "moved to Skipped" in h and "Viu" in h
+def test_sweep_is_reversible(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    p, conn = _fresh(tmp_path,"n3.db")
+    dead = _add(conn, "r1", "Contract semnat", status="complete", deadline_days=20)
+    conn.close()
+    c = _login(p)
+    c.post("/app/inbox/sweep")
+    assert "Contract semnat" in c.get("/app/qualified?stage=skipped").text
+def test_sweep_leaves_nothing_to_hide(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    p, conn = _fresh(tmp_path,"n4.db")
+    _add(conn, "z1", "Viu", deadline_days=6)
+    _add(conn, "z2", "Contract semnat", status="complete", deadline_days=20)
+    conn.close()
+    c = _login(p)
+    assert "1 tender(s) hidden" in c.get("/app/inbox").text
+    c.post("/app/inbox/sweep")
+    h = c.get("/app/inbox").text
+    assert "tender(s) hidden" not in h and "Skip them for good" not in h
+def test_read_only_blocks_the_sweep(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    p, conn = _fresh(tmp_path,"n5.db")
+    dead = _add(conn, "ro1", "Contract semnat", status="complete", deadline_days=20)
+    ConfigStore(conn).set("web.read_only", True); conn.commit(); conn.close()
+    _login(p).post("/app/inbox/sweep")
+    from workflows import work
+    conn = db.connect(p)
+    assert work.stage_of(conn, dead, 1) == "inbox"
+    conn.close()
