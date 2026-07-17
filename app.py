@@ -344,13 +344,16 @@ def cmd_inspect(conn, store, args):
         print(f"pipeline status={row['status']}  found={time.strftime('%Y-%m-%d %H:%M', time.localtime(row['created_at']))}")
         print(f"title: {(nj.get('title') or '')[:70]}")
         print("\n-- what WE stored (normalized_json) --")
-        for k in ("status", "status_details", "deadline", "enquiry_deadline",
-                  "publication_date", "value_amount", "value_currency"):
+        for k in ("status", "status_details", "awarded", "deadline",
+                  "enquiry_deadline", "publication_date", "value_amount",
+                  "value_currency"):
             print(f"   {k:<20} {nj.get(k)!r}")
 
         state = lifecycle.state_of(nj, nj.get("deadline"), closed)
         why = "status/status_details is in results.closed_statuses"
-        if state != lifecycle.CLOSED:
+        if nj.get("awarded"):
+            why = "the package already contains an award or a contract"
+        elif state != lifecycle.CLOSED:
             why = ("deadline known -> compared to today" if nj.get("deadline")
                    else "NO submission deadline stored and status is not in the closed list")
         print(f"\n-- verdict: {state.upper()} ({lifecycle.LABEL[state]}) --")

@@ -29,11 +29,17 @@ def status_text(nj):
 def state_of(nj, deadline_raw, closed, now=None):
     """Can we still submit a bid?
 
-    The ONLY positive evidence is a submission deadline still ahead of us. A status merely
-    being present proves nothing: OCDS keeps tender.status = "active" all the way through
+    Checked in order of how much each signal can be trusted:
+      1. awarded  - somebody is already being awarded the job. Structural, so it holds
+                    whatever the portal calls the stage and in whatever language.
+      2. status / status_details in the configured closed list.
+      3. a submission deadline still ahead of us.
+    A status merely EXISTING proves nothing: OCDS keeps tender.status = "active" through
     qualification and award, long after bidding shut.
     """
     now = now or time.time()
+    if nj.get("awarded"):
+        return CLOSED
     for key in ("status", "status_details"):
         v = str(nj.get(key) or "").strip().lower()
         if v and v in closed:

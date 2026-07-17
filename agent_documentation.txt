@@ -534,10 +534,18 @@ COMPONENT MAP
     is useless to us however well it fits. Portal wording and language are irrelevant - MTender
     says "Depunerea ofertelor" / "Calificarea ofertantilor" / "Anulat", genericweb sites say
     nothing at all. Never build the filter around one portal's vocabulary.
-    web/user/lifecycle.state_of(nj, deadline_raw, closed, now) decides:
-      1. status OR status_details in results.closed_statuses  -> CLOSED
-      2. else an authoritative submission deadline is known    -> CLOSED/OPEN by that date
-      3. else                                                  -> UNKNOWN (shown, chip warns)
+    web/user/lifecycle.state_of(nj, deadline_raw, closed, now) decides, most trustworthy first:
+      1. nj["awarded"]                                         -> CLOSED
+      2. status OR status_details in results.closed_statuses   -> CLOSED
+      3. else an authoritative submission deadline is known     -> CLOSED/OPEN by that date
+      4. else                                                   -> UNKNOWN (shown, chip warns)
+    Rule 1 exists because rule 3 CANNOT work on MTender: plenty of real procedures never carry a
+    tenderPeriod.endDate at all (verified on ocds-b3wdp1-MD-1782799255436, a 583 MDL
+    "Raportare achizitiile de valoare mica" - three records, not one endDate between them). No
+    amount of renormalising invents a deadline the source never sent. mtender._awarded(crs) is
+    structural instead of textual: an award or a contract exists => somebody is being given the
+    job => we cannot bid. It needs no vocabulary and survives a change of language, which is the
+    whole point - Victor's other sites will not have MTender's words at all.
     THE BUG THIS REPLACED, do not bring it back: state_of used to end with
     `return OPEN if status else UNKNOWN`, treating "a status exists" as proof bidding was open.
     OCDS keeps tender.status = "active" through qualification and award, so every
@@ -552,6 +560,13 @@ COMPONENT MAP
     operator can read "Calificarea ofertantilor" straight off the inbox and add it to
     Company settings -> List behaviour -> results.closed_statuses. That loop is the design: we do
     not hardcode a portal's stage names, the operator teaches them once.
+    WHICH RECORD ANSWERS: MTender packs SEVERAL compiled releases under one ocid (planning,
+    tender, award) and they advance independently. _first() returns the first non-empty value in
+    list order, which on the tender above meant statusDetails="negotiation" from records[0] while
+    records[2], two seconds newer, said "awarding" and carried the award. Anything describing
+    WHERE THE PROCEDURE IS NOW must use _latest(crs, getter) (freshest compiledRelease.date wins),
+    not _first. status and status_details do; title/value/cpv/documents still use _first on
+    purpose, since they are stable across releases and often only present on one.
     tender.statusDetails IS now captured (workflows/collectors/mtender.normalize_record). Existing
     rows get it with `app.py renormalize mtender` (POSITIONAL source, there is no --source flag).
     It re-derives normalized_json from raw_documents.payload_json - no re-fetch; the raw package is
