@@ -114,7 +114,7 @@ def inbox(request: Request, q: str = "", match: str = "", swept: str = ""):
                                    if request.url.query else "")
         body_rows = "".join(
             "<tr>" + cards.cell_ref(r) + cards.cell_tender(r, cards.nj_of(r), portal,
-                                                          extra=lifecycle.chip(st))
+                                                          extra=lifecycle.chip(st, cards.nj_of(r)))
             + cards.cell_value(cards.nj_of(r)) + cards.cell_docs(cards.nj_of(r))
             + cards.cell_match(r) + cards.cell_when(r, cards.nj_of(r), now)
             + cards.cell_decide(r, back)
