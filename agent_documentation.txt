@@ -517,6 +517,20 @@ COMPONENT MAP
            sources.genericweb / collect.* editors still render underneath it on the same page -
            which is exactly the "everything in one place" that was asked for. FORMS entries take
            (store, request) now, because this one needs conn and read_only.
+      (13) NEXT, not started: cross-instance admin overview - see the plan in [18c].
+      (14) NEXT, not started: provisioning script for a new company - see [18c].
+      (15) NEXT, not started: CONFIG ROLLBACK IN THE USER ZONE. Victor's decision: "the company
+           rolls back its own mistake", so this belongs to the user, not the operator.
+           store.set() already versions every change into the `configs` table (version, active,
+           actor, note, created_at) and the admin /config/rollback route restores one. Nothing of
+           that is exposed in /app/settings. Do this BEFORE (16) - it is the only thing /config
+           still does that the user zone cannot.
+      (16) NEXT, not started: DELETE the duplicated admin pages. Every one of these is now fully
+           covered by /app/settings and nothing needs porting - they are pure duplication that
+           will drift: /config (+ /config/item, /config/save, /config/rollback), /user-settings
+           (+ its 5 POST routes), /schedule, /results/settings, /analyze/settings. Afterwards the
+           admin zone is only what Victor asked it to be: core tests, health and diagnostics.
+           web/sites_view.py is already dead and can go with them.
       (12h) DONE: no machine names on screen. web/user/labels.py maps every visible config key to
            a human title ("Move to the archive after", not "archive_after_days"); the raw key
            still appears, once, small and muted under the field, because support and the docs
@@ -636,6 +650,48 @@ COMPONENT MAP
     today read "closed", tomorrow's read "today", "2 days left" meant three. Use
     engine.dateparse.day_end_ts (23:59:59) for all deadline maths; cards._left, routes_home
     alerts, routes_qualified alerts and its sort all go through it now.
+
+[18f] FEED / API PROBE ON A NEW SITE (workflows/collectors/feed_probe.py) - DONE, HALF-WIRED:
+    probe(url, fetch=None) tries, in order: RSS/Atom declared by the page's own
+    <link rel=alternate>, then /wp-json/wp/v2/posts, /feed, /rss.xml, /sitemap.xml. It returns
+    every find, best first; best() takes the top one. It runs automatically inside
+    /app/settings/sites/add and on demand from the "Find feed" button, storing feed_kind /
+    feed_url / feed_note on the site record. The panel shows "<kind> available" as a link, or
+    "no feed" once probed.
+    WHAT IS NOT DONE, ON PURPOSE: the collector does NOT use feed_url yet. It is recorded and
+    displayed only. Wiring genericweb to walk a feed instead of paging HTML is the next step and
+    must be its own change - a half-tested collector branch is worse than none.
+    WHY ONLY FOUR PATTERNS: "discover the API" has no general solution - there is no discovery
+    standard. These four are conventions with a real hit rate on Moldovan municipal sites (a lot
+    of them run WordPress), cost zero tokens, and fail cleanly. Do not try to generalise this.
+    WHY THE BODY IS VERIFIED, NOT THE STATUS: many sites answer every path with their homepage,
+    so a 200 proves nothing. _is_json_list requires wp-json to be a JSON LIST (a WordPress error
+    is a JSON object), _is_feed wants <rss/<feed, _is_sitemap wants <urlset. There is a test for
+    the homepage-on-every-path case.
+    fetch is injectable so every test runs offline. probe() never raises: a failing probe must
+    never block adding a site.
+    HONEST SCOPE, tell Victor again if it comes up: an API fixes DISCOVERY and INCREMENTALITY -
+    a reliable list with modification dates instead of blind paging. It does NOT remove the model
+    from EXTRACTION: wp-json returns posts, not tenders, so working out that a post is a tender
+    and pulling out its deadline/CPV still costs tokens. The real prize is the same one MTender
+    already gives us - see [18d]: only a structured source carries status/statusDetails/awards,
+    without which the inbox lifecycle filter has nothing to work with.
+
+[18e] NEVER SCRAPE A SITE WE ALREADY HAVE AN API FOR:
+    genericweb.api_covered(url) returns True for hosts a dedicated collector already handles
+    (mtender.md, mtender.gov.md and subdomains). The collector skips them with a warning and the
+    sites panel shows them with a red strip plus a Remove button.
+    Three separate reasons, all real:
+      * money - scraping runs every page through a model on the company's own key, to obtain data
+        the OCDS API gives us free;
+      * quality - the scraped copy has no tender.status, no statusDetails and no awards, so it
+        would walk straight past the inbox lifecycle filter as UNKNOWN;
+      * it was UNREMOVABLE - the old sites_view._api_only_site() filtered such entries OUT of the
+        rendered list, so the row could never be deleted through the UI while the collector
+        happily kept scanning it. Hiding a thing is not disabling it. If something must not run,
+        stop it in the code path that runs it, and leave it visible so it can be dealt with.
+    Match on the HOST, never a substring: "notmtender.md.evil.com" must not be treated as covered.
+    There is a test for exactly that.
 
 [18b] PYTHON VERSION TRAP: production runs 3.10, agents usually develop on 3.12. Consequences:
     * dt.UTC and datetime.UTC are 3.11+. Use dt.timezone.utc. Same for any 3.11/3.12-only syntax -

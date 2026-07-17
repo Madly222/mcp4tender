@@ -4,15 +4,9 @@ from web.render import _e
 from web.sites_common import _bar, _crawl_rows
 from web.user.icons import icon
 
-_API_ONLY_HOSTS = ("mtender.md", "www.mtender.md")
+from workflows.collectors.genericweb import api_covered
 
 A = "/app/settings/sites"
-
-
-def _api_only_site(url):
-    u = (url or "").lower()
-    return any(("//" + h) in u or u.endswith(h) or ("//" + h + "/") in u
-               for h in _API_ONLY_HOSTS)
 
 
 def _mini(action, fields, label, title="", cls="btn ghost sm", confirm=""):
@@ -25,6 +19,7 @@ def _mini(action, fields, label, title="", cls="btn ghost sm", confirm=""):
 
 def _site_card(s, cs, ro):
     sid = s.get("id", "")
+    covered = api_covered(s.get("url"))
     url = s.get("url") or ""
     step = int(s.get("batch_size", 30) or 30)
     collected = (cs["total_collected"] if cs else 0) or 0
@@ -32,7 +27,23 @@ def _site_card(s, cs, ro):
     detected = (cs["detected_count"] if (cs and "detected_count" in cs.keys()) else None)
     on = bool(s.get("enabled", True))
 
-    meta = [_bar(collected, est, detected)]
+    meta = []
+    if covered:
+        meta.append('<div class="strip bad" style="width:100%">'
+                    f'<div class="ic">{icon("bang", 3)}</div><div class="tx">'
+                    "<b>Already collected through its API</b>"
+                    "<span>Scanning this site by reading its pages spends tokens on your key "
+                    "for data we already get free and complete from the API above — and the "
+                    "scraped copy has no status, so it would slip past the inbox filter. "
+                    "Remove it.</span></div></div>")
+    meta.append(_bar(collected, est, detected))
+    if s.get("feed_url"):
+        meta.append(f'<a class="chip acc" href="{_e(s["feed_url"])}" target=_blank '
+                    f'title="{_e(s.get("feed_note") or "")}">'
+                    f'{_e(s.get("feed_kind") or "feed")} available</a>')
+    elif "feed_kind" in s:
+        meta.append('<span class="chip plain" title="probed and found nothing — '
+                    'this site is read page by page">no feed</span>')
     if cs and cs["exhausted"]:
         meta.append('<span class="chip ok">all collected</span>')
     if cs and "note" in cs.keys() and cs["note"]:
@@ -70,6 +81,8 @@ def _site_card(s, cs, ro):
         _mini("collect-batch", {"site_id": sid}, f"Collect next {step}",
               "fetch the next batch from this site now", cls="btn sm"),
         _mini("estimate", {"id": sid}, "Estimate", "re-count how many tenders this site has"),
+        _mini("probe", {"id": sid}, "Find feed",
+              "look for an RSS feed, a WordPress API or a sitemap on this site"),
         _mini("preview", {"id": sid}, "Test", "fetch this page now and show what is found"),
         _mini("analyze", {"id": sid}, "Analyse", "profile this site: are there tenders, how to reach them"),
         _mini("render-toggle", {"id": sid}, f'JS: {"on" if s.get("render") else "off"}',
@@ -115,7 +128,7 @@ def sites_panel(store, request):
     conn = request.state.conn
     ro = bool(store.get("web.read_only"))
     all_t = store.get("sites.tenders", []) or []
-    tenders = [s for s in all_t if not _api_only_site(s.get("url"))]
+    tenders = list(all_t)
     partners = store.get("sites.partners", []) or []
     gw = store.get("sources.genericweb", {}) or {}
     gw_on = bool(gw.get("enabled", False))
