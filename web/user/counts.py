@@ -28,8 +28,10 @@ def nav_counts(conn, store, acct_id=0):
     except Exception:
         return {}
     from web.user import lifecycle
-    kept, _gone = lifecycle.split(partition(conn.execute(_RELEVANT).fetchall(), store)["new"],
-                                  store, decided)
+    kept, _gone, waiting = lifecycle.split(
+        partition(conn.execute(_RELEVANT).fetchall(), store)["new"], store, decided)
     out = {"inbox": len(kept)}
+    if waiting:
+        out["planning"] = len(waiting)
     out.update({k: v for k, v in w.items() if v})
     return out

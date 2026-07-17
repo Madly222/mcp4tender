@@ -534,11 +534,14 @@ COMPONENT MAP
     is useless to us however well it fits. Portal wording and language are irrelevant - MTender
     says "Depunerea ofertelor" / "Calificarea ofertantilor" / "Anulat", genericweb sites say
     nothing at all. Never build the filter around one portal's vocabulary.
-    web/user/lifecycle.state_of(nj, deadline_raw, closed, now) decides, most trustworthy first:
+    web/user/lifecycle.state_of(nj, deadline, closed, pending, now) - most trustworthy first:
       1. nj["awarded"]                                         -> CLOSED
       2. status OR status_details in results.closed_statuses   -> CLOSED
-      3. else an authoritative submission deadline is known     -> CLOSED/OPEN by that date
-      4. else                                                   -> UNKNOWN (shown, chip warns)
+      3. an authoritative submission deadline is known          -> CLOSED/OPEN by that date
+      4. status OR status_details in results.pending_statuses   -> PENDING ("Not open yet")
+      5. else                                                   -> UNKNOWN (shown, chip warns)
+    Order 3-before-4 is deliberate: a real submission window outranks any label, so a planning
+    notice that already carries a deadline is a live tender and belongs in the inbox.
     Rule 1 exists because rule 3 CANNOT work on MTender: plenty of real procedures never carry a
     tenderPeriod.endDate at all (verified on ocds-b3wdp1-MD-1782799255436, a 583 MDL
     "Raportare achizitiile de valoare mica" - three records, not one endDate between them). No
@@ -587,7 +590,18 @@ COMPONENT MAP
     and carries a "Skip them for good" button posting to /app/inbox/sweep, which marks exactly
     those tenders as stage=skipped. The sweep is reversible: they appear under
     /app/qualified?stage=skipped and can be moved back.
-    lifecycle.split(rows, store, decided) is the ONE place the rule lives. The list, the nav badge
+    PENDING / "Not open yet" (/app/planning, nav sub-item next to Skipped): announcements with no
+    documents and no bidding window. Default results.pending_statuses = planning, planned.
+    THE PAGE HAS NO DECIDE BUTTONS AND THE SWEEP SKIPS THESE - both on purpose, and there are
+    tests for both. A tender_work row is a permanent human decision; burying a plan in "skipped"
+    means that when the buyer finally opens it for bids, it never comes back and the bid is lost.
+    Instead every bucket is COMPUTED per request, so a plan that grows a deadline walks into the
+    inbox by itself with no manual step (tests/test_planning.py proves the transition).
+    That works because collection keeps records fresh: MTender's feed is ordered by change date
+    (?offset=<date>), so an updated tender re-appears, engine.collectors._store_item sees a new
+    content_hash and UPDATEs normalized_json with status="updated", which re-enters the pipeline.
+    lifecycle.split(rows, store, decided) returns (live, closed_ids, waiting) and is the ONE place
+    the rule lives. The list, the nav badge
     (web/user/counts.py) and the sweep all call it. They used to disagree: nav_counts ran its own
     query with no lifecycle filter, so the menu badge counted tenders the list was hiding. If you
     add a caller, call split() - do not re-implement the condition. counts._RELEVANT must keep its
