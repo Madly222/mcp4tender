@@ -204,6 +204,19 @@ def parse_date(value, tzname=DEFAULT_TZ, dayfirst=True):
     return parse(value, tzname, dayfirst).date
 
 
+def day_end_ts(value, tzname=DEFAULT_TZ, dayfirst=True):
+    """Timestamp of the LAST second of the day `value` falls on.
+
+    A deadline dated today is live until that day ends. Using midnight instead
+    silently loses a day once the clock passes 00:00, which made every countdown
+    label off by one.
+    """
+    d = parse_date(value, tzname, dayfirst)
+    if d is None:
+        return None
+    return dt.datetime.combine(d, dt.time(23, 59, 59)).timestamp()
+
+
 def to_iso(value, tzname=DEFAULT_TZ, dayfirst=True):
     return parse(value, tzname, dayfirst).iso()
 

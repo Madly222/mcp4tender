@@ -4,7 +4,7 @@ import time
 
 from fastapi import APIRouter, Request
 
-from engine.dateparse import humanize
+from engine.dateparse import day_end_ts, humanize
 from web.render import _e
 from web.user import cards
 from web.user.counts import nav_counts
@@ -29,7 +29,7 @@ def _open_rows(conn, acct_id):
     out = []
     for r in rows:
         raw, _ = cards.deadline_of(r, cards.nj_of(r))
-        ts = cards._stamp(cards.parse_date(raw)) if raw else None
+        ts = day_end_ts(raw) if raw else None
         out.append((ts if ts is not None else float("inf"), r, raw, ts))
     out.sort(key=lambda x: x[0])
     return out

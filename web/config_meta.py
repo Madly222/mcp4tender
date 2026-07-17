@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 CONFIG_META = {
+    "results.closed_statuses": "Tender statuses that mean bidding is over. Anything in this list is hidden from the inbox, whatever its deadline says. Case-insensitive.",
     "runtime.mode": "Label stored in the 'mode' column of every pipeline run record. Cosmetic only; does not change behaviour.",
     "runtime.max_retries": "How many times a failed pipeline stage is retried before the whole run is marked failed.",
     "runtime.retry_backoff": "Seconds to wait between stage retries (works together with runtime.max_retries).",

@@ -529,6 +529,35 @@ COMPONENT MAP
            env vars, `app.py user add` the first account, set web.port in that db. No venv, no
            second checkout. A shell script plus a unit template, not a code change.
 
+[18d] INBOX LIFECYCLE FILTER + THE OFF-BY-ONE THAT HID LIVE TENDERS:
+    The inbox lists only tenders you can still bid on, newest found first
+    (ORDER BY t.created_at DESC - there was NO ordering at all before, so SQLite returned
+    insertion order, i.e. oldest first).
+    Two independent rules hide a tender, and they are NOT redundant:
+      * segments.partition already drops a PAST DEADLINE into the archive segment, so it never
+        reaches buckets["new"]. This was already true before the filter existed.
+      * web/user/lifecycle.py catches what dates cannot: a tender whose STATUS says the race is
+        over while its deadline still looks alive (awarded / contract signed). The list is the
+        config key results.closed_statuses (default: complete, cancelled, unsuccessful,
+        withdrawn - the unambiguous OCDS values), editable in Company settings -> List behaviour.
+    Unknown status AND unknown deadline => state "unknown" => the tender is SHOWN with an N/A
+    chip. Never hide on missing data; a silently dropped tender is a lost bid.
+    The count of what the filter hid is printed above the table on purpose - do not remove it.
+    THE BUG THIS UNCOVERED (fixed): cards._left computed the countdown from _stamp(parse_date(x)),
+    i.e. MIDNIGHT of the deadline day, and compared it to now. Once the clock passed 00:00 the
+    floor division lost a whole day, so EVERY label was off by one: a tender closing today read
+    "closed", tomorrow's read "today", and "2 days left" meant three. Victor was being told to
+    skip tenders he could still bid on. The fix is engine.dateparse.day_end_ts (23:59:59 of the
+    day), and every deadline consumer now goes through it: cards._left, routes_home alerts,
+    routes_qualified alerts and its sort. Do not reintroduce _stamp(parse_date(...)) for
+    deadline maths.
+    STILL MISSING: MTender's own stage names (the four dots on the portal: Solicitare clarificari
+    / Depunerea ofertelor / Calificarea ofertantilor / Contract) are tender.statusDetails, an
+    MTender OCDS extension that normalize_record does NOT capture - only tender.status. The raw
+    OCDS package IS kept in raw_documents.payload_json forever (purged only by an explicit source
+    reset), so statusDetails can be back-filled for all existing tenders offline, without
+    re-fetching. Ask Victor for the real distinct values before mapping them.
+
 [18b] PYTHON VERSION TRAP: production runs 3.10, agents usually develop on 3.12. Consequences:
     * dt.UTC and datetime.UTC are 3.11+. Use dt.timezone.utc. Same for any 3.11/3.12-only syntax -
       verify_install.py py_compiles everything for exactly this reason; run it before restarting.

@@ -5,6 +5,7 @@ import time
 from fastapi import APIRouter, Form, Request
 from fastapi.responses import RedirectResponse
 
+from engine.dateparse import day_end_ts
 from web.render import _e
 from web.user import cards
 from web.user.counts import nav_counts
@@ -55,7 +56,7 @@ def _closing_soon(rows, now):
     n = 0
     for r in rows:
         raw, _ = cards.deadline_of(r, cards.nj_of(r))
-        ts = cards._stamp(cards.parse_date(raw)) if raw else None
+        ts = day_end_ts(raw) if raw else None
         if ts is not None and 0 <= ts - now <= 7 * 86400:
             n += 1
     return n
@@ -96,7 +97,7 @@ def qualified(request: Request, stage: str = ""):
 
     info = work.stages_for(conn, [r["id"] for r in rows], acct_id)
     now = time.time()
-    rows.sort(key=lambda r: cards._stamp(cards.parse_date(cards.deadline_of(r, cards.nj_of(r))[0]))
+    rows.sort(key=lambda r: day_end_ts(cards.deadline_of(r, cards.nj_of(r))[0])
               or float("inf"))
     back = request.url.path + ("?" + str(request.url.query) if request.url.query else "")
 
