@@ -3,6 +3,7 @@ from __future__ import annotations
 from web.config_meta import CONFIG_META
 from web.render import _e
 from web.user.icons import icon
+from web.user.labels import label_of
 
 SPECS = {
     "triage.cpv_weights": {
@@ -68,7 +69,7 @@ def _label_of(sub, spec):
     given = (spec.get("labels") or {}).get(sub)
     if given:
         return given
-    return sub.replace("_", " ").capitalize()
+    return label_of("x." + sub)
 
 
 def _widget(name, value):
@@ -130,8 +131,7 @@ def _fields(key, value, spec):
     rows = []
     for sub, v in (value or {}).items():
         rows.append('<div class="pref">'
-                    f'<div class="pref-h"><label>{_e(_label_of(sub, spec))}</label>'
-                    f'<span class="chip plain mono">{_e(sub)}</span></div>'
+                    f'<div class="pref-h"><label>{_e(_label_of(sub, spec))}</label></div>'
                     f'<div class="pref-b" style="display:block">{_widget("f_" + sub, v)}</div>'
                     "</div>")
     return _shell(key, spec, "".join(rows))
