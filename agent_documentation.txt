@@ -553,9 +553,18 @@ COMPONENT MAP
     Company settings -> List behaviour -> results.closed_statuses. That loop is the design: we do
     not hardcode a portal's stage names, the operator teaches them once.
     tender.statusDetails IS now captured (workflows/collectors/mtender.normalize_record). Existing
-    rows get it with `app.py renormalize --source mtender`, which re-derives normalized_json from
-    raw_documents.payload_json - no re-fetch, the raw package is kept forever and only an explicit
-    source reset purges it.
+    rows get it with `app.py renormalize mtender` (POSITIONAL source, there is no --source flag).
+    It re-derives normalized_json from raw_documents.payload_json - no re-fetch; the raw package is
+    kept forever and only an explicit source reset purges it.
+    THE FILTER IS ONLY AS GOOD AS THE STORED RECORD. Tenders collected by an older normalizer keep
+    whatever nj they were given - a missing deadline stays missing, so the rule returns UNKNOWN and
+    shows them. Changing the normalizer does NOTHING for existing rows until renormalize runs. When
+    a filter "does not work", check the DATA first with:
+        app.py inspect <ocid-or-id-fragment> [--find <word off the portal>]
+    It prints, for each match: what we stored, the verdict AND the reason for it, what the source
+    actually sent (every raw path with status/period/date in it, or everything matching --find),
+    and a diff of what renormalize would change. --find is there because we do not know where a
+    given portal hides its stage - let the tool find the JSON path instead of guessing.
     segments.partition still archives past-deadline tenders before the inbox sees them, so the two
     rules overlap by design and are not redundant: partition cannot catch a dead status on a
     tender whose dates still look alive.
