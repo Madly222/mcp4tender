@@ -19,9 +19,10 @@ def _login(p):
     return c
 def _iso(days):
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(NOW + days*86400))
-def _add(conn, ext, title, *, status="active", deadline_days=10, found_days_ago=1):
+def _add(conn, ext, title, *, status="active", details=None, deadline_days=10,
+         found_days_ago=1):
     nj = {"title": title, "buyer": "STISC", "value_amount": 1000, "value_currency": "MDL",
-          "cpv": [], "documents": [], "status": status}
+          "cpv": [], "documents": [], "status": status, "status_details": details}
     if deadline_days is not None:
         nj["deadline"] = _iso(deadline_days)
     found = NOW - found_days_ago*86400
@@ -31,27 +32,42 @@ def _add(conn, ext, title, *, status="active", deadline_days=10, found_days_ago=
     conn.execute("INSERT INTO verdicts(tender_id,stage_name,verdict,score,created_at) VALUES(?,'applicability','can',90,?)", (tid, NOW))
     conn.commit(); return tid
 CLOSED = {"complete", "cancelled", "unsuccessful", "withdrawn"}
+def _nj(status="active", details=None):
+    return {"status": status, "status_details": details}
 def test_open_while_bids_are_accepted():
-    assert lifecycle.state_of("active", _iso(5), CLOSED, NOW) == lifecycle.OPEN
+    assert lifecycle.state_of(_nj(), _iso(5), CLOSED, NOW) == lifecycle.OPEN
 def test_closed_once_the_deadline_passed():
-    assert lifecycle.state_of("active", _iso(-2), CLOSED, NOW) == lifecycle.CLOSED
+    assert lifecycle.state_of(_nj(), _iso(-2), CLOSED, NOW) == lifecycle.CLOSED
 def test_deadline_today_is_still_open():
-    assert lifecycle.state_of("active", _iso(0), CLOSED, NOW) == lifecycle.OPEN
+    assert lifecycle.state_of(_nj(), _iso(0), CLOSED, NOW) == lifecycle.OPEN
 def test_dead_status_beats_a_future_deadline():
     for st in ("complete", "CANCELLED", " unsuccessful "):
-        assert lifecycle.state_of(st, _iso(30), CLOSED, NOW) == lifecycle.CLOSED, st
+        assert lifecycle.state_of(_nj(st), _iso(30), CLOSED, NOW) == lifecycle.CLOSED, st
+def test_status_details_are_checked_too():
+    closed = CLOSED | {"calificarea ofertantilor"}
+    nj = _nj("active", "Calificarea ofertantilor")
+    assert lifecycle.state_of(nj, _iso(30), closed, NOW) == lifecycle.CLOSED
+def test_an_active_status_alone_is_not_proof_that_bidding_is_open():
+    """OCDS keeps status=active through qualification and award. Only a live submission
+    deadline proves we can still bid; without one the honest answer is 'unknown'."""
+    assert lifecycle.state_of(_nj("active"), None, CLOSED, NOW) == lifecycle.UNKNOWN
+    assert lifecycle.state_of(_nj("active", "Calificarea ofertantilor"), None,
+                              CLOSED, NOW) == lifecycle.UNKNOWN
 def test_unknown_when_nothing_is_known():
-    assert lifecycle.state_of(None, None, CLOSED, NOW) == lifecycle.UNKNOWN
-    assert lifecycle.state_of("", "", CLOSED, NOW) == lifecycle.UNKNOWN
-def test_status_without_deadline_counts_as_open():
-    assert lifecycle.state_of("active", None, CLOSED, NOW) == lifecycle.OPEN
-def test_unparseable_deadline_falls_back_to_status():
-    assert lifecycle.state_of("active", "sometime soon", CLOSED, NOW) == lifecycle.OPEN
-    assert lifecycle.state_of(None, "sometime soon", CLOSED, NOW) == lifecycle.UNKNOWN
-def test_chip_only_for_the_odd_states():
-    assert lifecycle.chip(lifecycle.OPEN) == ""
-    assert "N/A" in lifecycle.chip(lifecycle.UNKNOWN)
-    assert "Bidding closed" in lifecycle.chip(lifecycle.CLOSED)
+    assert lifecycle.state_of({}, None, CLOSED, NOW) == lifecycle.UNKNOWN
+    assert lifecycle.state_of(_nj("", ""), "", CLOSED, NOW) == lifecycle.UNKNOWN
+def test_an_unparseable_deadline_is_not_evidence():
+    assert lifecycle.state_of(_nj("active"), "sometime soon", CLOSED, NOW) == lifecycle.UNKNOWN
+def test_chip_shows_the_real_stage_so_it_can_be_acted_on():
+    assert lifecycle.chip(lifecycle.OPEN, {}) == ""
+    assert "Bidding closed" in lifecycle.chip(lifecycle.CLOSED, {})
+    h = lifecycle.chip(lifecycle.UNKNOWN, _nj("active", "Calificarea ofertanților"))
+    assert "Calificarea ofertan" in h, "the operator must see what the portal actually says"
+    assert "N/A" in lifecycle.chip(lifecycle.UNKNOWN, {})
+def test_status_text_prefers_the_detailed_stage():
+    assert lifecycle.status_text(_nj("active", "Depunerea ofertelor")) == "Depunerea ofertelor"
+    assert lifecycle.status_text(_nj("active", None)) == "active"
+    assert lifecycle.status_text({}) == ""
 def test_inbox_hides_a_dead_status_and_says_so(tmp_path, monkeypatch):
     """A signed contract with a future deadline is the case only the status can catch —
     segments.partition cannot, because by its dates the tender still looks alive."""
@@ -180,3 +196,32 @@ def test_read_only_blocks_the_sweep(tmp_path, monkeypatch):
     conn = db.connect(p)
     assert work.stage_of(conn, dead, 1) == "inbox"
     conn.close()
+def test_qualification_stage_no_longer_leaks_into_the_inbox(tmp_path, monkeypatch):
+    """The exact leak Victor hit: OCDS status stays 'active' during qualification and the
+    record carries no submission deadline, so the old rule called it open."""
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    p, conn = _fresh(tmp_path,"q1.db")
+    _add(conn, "q1", "In calificare", status="active",
+         details="Calificarea ofertanților", deadline_days=None)
+    conn.close()
+    c = _login(p)
+    h = c.get("/app/inbox").text
+    assert "Calificarea ofertan" in h, "its real stage must be visible, not a bare N/A"
+    conn = db.connect(p); s = ConfigStore(conn)
+    s.set("results.closed_statuses", ["complete", "cancelled", "calificarea ofertanților"])
+    conn.commit(); conn.close()
+    h = c.get("/app/inbox").text
+    assert "In calificare" not in h
+    assert "1 tender(s) hidden" in h
+def test_the_collector_keeps_status_details():
+    from workflows.collectors.mtender import normalize_record
+    pkg = {"records": [{"compiledRelease": {
+        "tender": {"title": "T", "status": "active", "statusDetails": "qualification",
+                   "tenderPeriod": {"endDate": "2026-08-01T16:00:00Z"}}}}]}
+    nj = normalize_record(pkg, "ocds-1")
+    assert nj["status"] == "active" and nj["status_details"] == "qualification"
+    assert nj["deadline"] == "2026-08-01T16:00:00Z"
+def test_missing_status_details_stays_none():
+    from workflows.collectors.mtender import normalize_record
+    pkg = {"records": [{"compiledRelease": {"tender": {"title": "T", "status": "active"}}}]}
+    assert normalize_record(pkg, "ocds-2")["status_details"] is None

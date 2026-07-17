@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 
 from engine.dateparse import day_end_ts
+from web.render import _e
 
 OPEN = "open"
 CLOSED = "closed"
@@ -16,22 +17,43 @@ def closed_statuses(store):
     return {str(s).strip().lower() for s in raw if str(s).strip()}
 
 
-def state_of(status, deadline_raw, closed, now=None):
+def status_text(nj):
+    """Whatever the source calls the current stage, in the source's own words."""
+    for key in ("status_details", "status"):
+        v = str(nj.get(key) or "").strip()
+        if v:
+            return v
+    return ""
+
+
+def state_of(nj, deadline_raw, closed, now=None):
+    """Can we still submit a bid?
+
+    The ONLY positive evidence is a submission deadline still ahead of us. A status merely
+    being present proves nothing: OCDS keeps tender.status = "active" all the way through
+    qualification and award, long after bidding shut.
+    """
     now = now or time.time()
-    st = str(status or "").strip().lower()
-    if st and st in closed:
-        return CLOSED
+    for key in ("status", "status_details"):
+        v = str(nj.get(key) or "").strip().lower()
+        if v and v in closed:
+            return CLOSED
     ts = day_end_ts(deadline_raw)
     if ts is not None:
         return CLOSED if int((ts - now) // 86400) < 0 else OPEN
-    return OPEN if st else UNKNOWN
+    return UNKNOWN
 
 
-def chip(state):
+def chip(state, nj=None):
     if state == OPEN:
         return ""
-    cls = "bad" if state == CLOSED else "plain"
-    return f'<span class="chip {cls}">{LABEL[state]}</span>'
+    if state == CLOSED:
+        return f'<span class="chip bad">{LABEL[CLOSED]}</span>'
+    text = status_text(nj or {})
+    if not text:
+        return '<span class="chip plain">N/A</span>'
+    return (f'<span class="chip warn" title="No submission deadline in the record — '
+            f'add this to Company settings if it means bidding is over">{_e(text[:34])}</span>')
 
 
 def split(rows, store, decided=()):
@@ -47,7 +69,7 @@ def split(rows, store, decided=()):
         if r["id"] in decided:
             continue
         nj = cards.nj_of(r)
-        state = state_of(nj.get("status"), cards.deadline_of(r, nj)[0], closed)
+        state = state_of(nj, nj.get("deadline"), closed)
         if state == CLOSED:
             gone.append(r["id"])
         else:

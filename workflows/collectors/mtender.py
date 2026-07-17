@@ -157,6 +157,7 @@ def normalize_record(record_package, ocid):
         "title": tg("title"),
         "description": tg("description"),
         "status": tg("status"),
+        "status_details": tg("statusDetails"),
         "buyer": _buyer_name(crs),
         "value_amount": value.get("amount"),
         "value_currency": value.get("currency"),
