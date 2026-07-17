@@ -4,6 +4,7 @@ import argparse
 import datetime as dt
 import os
 import sys
+import time
 from pathlib import Path
 
 from engine import db
@@ -310,6 +311,92 @@ def cmd_renormalize(conn, store, args):
     return 0
 
 
+def _walk(obj, path=""):
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            yield from _walk(v, f"{path}.{k}")
+    elif isinstance(obj, list):
+        for i, v in enumerate(obj):
+            yield from _walk(v, f"{path}[{i}]")
+    else:
+        yield path.lstrip("."), obj
+
+
+def cmd_inspect(conn, store, args):
+    import json as _json
+
+    from web.user import lifecycle
+
+    q = args.external_id
+    rows = conn.execute(
+        "SELECT * FROM tenders WHERE external_id LIKE ? OR id = ? LIMIT 5",
+        (f"%{q}%", q if str(q).isdigit() else -1)).fetchall()
+    if not rows:
+        print(f"no tender matching {q!r}")
+        return 1
+    closed = lifecycle.closed_statuses(store)
+    print(f"results.closed_statuses = {sorted(closed)}\n")
+
+    for row in rows:
+        nj = _json.loads(row["normalized_json"] or "{}")
+        print("=" * 78)
+        print(f"id={row['id']}  source={row['source']}  external_id={row['external_id']}")
+        print(f"pipeline status={row['status']}  found={time.strftime('%Y-%m-%d %H:%M', time.localtime(row['created_at']))}")
+        print(f"title: {(nj.get('title') or '')[:70]}")
+        print("\n-- what WE stored (normalized_json) --")
+        for k in ("status", "status_details", "deadline", "enquiry_deadline",
+                  "publication_date", "value_amount", "value_currency"):
+            print(f"   {k:<20} {nj.get(k)!r}")
+
+        state = lifecycle.state_of(nj, nj.get("deadline"), closed)
+        why = "status/status_details is in results.closed_statuses"
+        if state != lifecycle.CLOSED:
+            why = ("deadline known -> compared to today" if nj.get("deadline")
+                   else "NO submission deadline stored and status is not in the closed list")
+        print(f"\n-- verdict: {state.upper()} ({lifecycle.LABEL[state]}) --")
+        print(f"   because: {why}")
+        print(f"   inbox chip would read: {lifecycle.status_text(nj) or 'N/A'!r}")
+
+        raw = conn.execute(
+            "SELECT payload_json FROM raw_documents WHERE source=? AND external_id=? "
+            "ORDER BY id DESC LIMIT 1", (row["source"], row["external_id"])).fetchone()
+        if not raw:
+            print("\n-- raw OCDS: NOT KEPT for this tender (cannot re-derive) --")
+            continue
+        payload = _json.loads(raw["payload_json"])
+        print("\n-- what the SOURCE actually sent (raw payload) --")
+        hits = 0
+        needle = (args.find or "").lower()
+        for path, val in _walk(payload):
+            sval = str(val)
+            low = path.lower()
+            interesting = ("status" in low or "period" in low or "date" in low
+                           or "phase" in low or "stage" in low)
+            if needle:
+                interesting = needle in sval.lower() or needle in low
+            if interesting and val not in (None, "", [], {}):
+                print(f"   {path:<58} = {sval[:44]!r}")
+                hits += 1
+                if hits > 60:
+                    print("   ... (truncated)")
+                    break
+        if not hits:
+            print("   (nothing matched — try --find with a word you see on the portal)")
+
+        if row["source"] == "mtender":
+            from workflows.collectors.mtender import normalize_record
+            fresh = normalize_record(payload, row["external_id"])
+            diff = {k: (nj.get(k), fresh.get(k)) for k in fresh
+                    if nj.get(k) != fresh.get(k)}
+            print("\n-- would `app.py renormalize mtender` change anything? --")
+            if not diff:
+                print("   no — stored data already matches the current normalizer")
+            else:
+                for k, (was, now_) in diff.items():
+                    print(f"   {k:<20} {str(was)[:30]!r} -> {str(now_)[:30]!r}")
+    return 0
+
+
 def cmd_triage(conn, store, args):
     from engine import process_stored_tenders
     pipeline = getattr(args, "pipeline", None) or "pipeline.tender_triage"
@@ -424,6 +511,10 @@ def main():
     sub.add_parser("triage")
     pr2 = sub.add_parser("renormalize")
     pr2.add_argument("source")
+    pi = sub.add_parser("inspect")
+    pi.add_argument("external_id")
+    pi.add_argument("--find", default=None,
+                    help="print every raw JSON path whose path or value contains this")
     pl = sub.add_parser("llm-test")
     pl.add_argument("--text", default=None)
     prd = sub.add_parser("read-doc")
@@ -463,6 +554,7 @@ def main():
                "web": cmd_web,
                "demo": cmd_demo, "collect": cmd_collect, "probe": cmd_probe,
                "triage": cmd_triage, "renormalize": cmd_renormalize,
+               "inspect": cmd_inspect,
                "llm-test": cmd_llm_test, "read-doc": cmd_read_doc,
                "extract": cmd_extract, "applicability": cmd_applicability,
                "suppliers": cmd_suppliers, "supervise": cmd_supervise,
