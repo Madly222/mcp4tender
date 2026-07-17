@@ -44,6 +44,16 @@ def sites_add(request: Request, kind: str = Form(...), label: str = Form(""),
         _set_auth(request.state.conn, sid,
                   {"type": "basic", "user": login.strip(), "pass": password})
 
+    feed_note = ""
+    if kind == "tenders":
+        try:
+            from workflows.collectors.feed_probe import probe
+            top = _save_probe(store, sid, probe(entry["url"]))
+            if top:
+                feed_note = f" · found a {top['kind']} feed"
+        except Exception:
+            feed_note = ""
+
     est_note = ""
     if kind == "tenders" and store.get("sources.genericweb", {}).get("enabled", False):
         from engine import run_collector
@@ -57,9 +67,36 @@ def sites_add(request: Request, kind: str = Form(...), label: str = Form(""),
         except Exception:
             est_note = ""
     if reachable:
-        return _redir_sites(msg=f"added (site reachable){est_note}")
+        return _redir_sites(msg=f"added (site reachable){est_note}{feed_note}")
     return _redir_sites(msg="added", err=f"warning: site not reachable now ({rmsg}) — "
                         f"saved anyway, check the URL")
+
+def _save_probe(store, sid, finds):
+    lst = list(store.get("sites.tenders", []) or [])
+    for site in lst:
+        if site.get("id") == sid:
+            top = finds[0] if finds else None
+            site["feed_kind"] = top["kind"] if top else None
+            site["feed_url"] = top["url"] if top else None
+            site["feed_note"] = top["note"] if top else "nothing found"
+    store.set("sites.tenders", lst, actor="app", note="feed probe")
+    return finds[0] if finds else None
+
+
+@router.post("/app/settings/sites/probe")
+def sites_probe(request: Request, id: str = Form(...)):
+    if request.state.readonly:
+        return _redir_sites(err="read-only mode")
+    store = request.state.store
+    site = next((s for s in (store.get("sites.tenders", []) or []) if s.get("id") == id), None)
+    if not site:
+        return _redir_sites(err="no such site")
+    from workflows.collectors.feed_probe import probe
+    top = _save_probe(store, id, probe(site.get("url")))
+    if not top:
+        return _redir_sites(msg="no feed or API found — this site will be read page by page")
+    return _redir_sites(msg=f"found {top['kind']}: {top['url']}")
+
 
 @router.post("/app/settings/sites/settings")
 def sites_settings(request: Request, id: str = Form(...), batch_size: str = Form("30")):
