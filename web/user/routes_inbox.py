@@ -89,8 +89,8 @@ def inbox_sweep(request: Request):
         return RedirectResponse("/app/inbox", status_code=303)
     acct_id = work.account_id(request)
     rows = conn.execute(SELECT + ORDER + " LIMIT 3000").fetchall()
-    _kept, closed_ids = lifecycle.split(partition(rows, store)["new"], store,
-                                        work.decided_ids(conn, acct_id))
+    _kept, closed_ids, _waiting = lifecycle.split(partition(rows, store)["new"], store,
+                                                 work.decided_ids(conn, acct_id))
     for tid in closed_ids:
         work.set_stage(conn, tid, acct_id, "skipped", note="bidding closed")
     return RedirectResponse(f"/app/inbox?swept={len(closed_ids)}", status_code=303)
@@ -104,7 +104,7 @@ def inbox(request: Request, q: str = "", match: str = "", swept: str = ""):
     rows = conn.execute(SELECT + ORDER + " LIMIT 3000").fetchall()
     buckets = partition(rows, store)
     decided = work.decided_ids(conn, acct_id)
-    fresh, closed_ids = lifecycle.split(buckets["new"], store, decided)
+    fresh, closed_ids, _waiting = lifecycle.split(buckets["new"], store, decided)
     hidden = len(closed_ids)
     shown = [(r, st) for r, st in fresh if _keep(r, q, match)]
     now = time.time()

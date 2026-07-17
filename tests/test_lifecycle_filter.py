@@ -35,29 +35,29 @@ CLOSED = {"complete", "cancelled", "unsuccessful", "withdrawn"}
 def _nj(status="active", details=None):
     return {"status": status, "status_details": details}
 def test_open_while_bids_are_accepted():
-    assert lifecycle.state_of(_nj(), _iso(5), CLOSED, NOW) == lifecycle.OPEN
+    assert lifecycle.state_of(_nj(), _iso(5), CLOSED, now=NOW) == lifecycle.OPEN
 def test_closed_once_the_deadline_passed():
-    assert lifecycle.state_of(_nj(), _iso(-2), CLOSED, NOW) == lifecycle.CLOSED
+    assert lifecycle.state_of(_nj(), _iso(-2), CLOSED, now=NOW) == lifecycle.CLOSED
 def test_deadline_today_is_still_open():
-    assert lifecycle.state_of(_nj(), _iso(0), CLOSED, NOW) == lifecycle.OPEN
+    assert lifecycle.state_of(_nj(), _iso(0), CLOSED, now=NOW) == lifecycle.OPEN
 def test_dead_status_beats_a_future_deadline():
     for st in ("complete", "CANCELLED", " unsuccessful "):
-        assert lifecycle.state_of(_nj(st), _iso(30), CLOSED, NOW) == lifecycle.CLOSED, st
+        assert lifecycle.state_of(_nj(st), _iso(30), CLOSED, now=NOW) == lifecycle.CLOSED, st
 def test_status_details_are_checked_too():
     closed = CLOSED | {"calificarea ofertantilor"}
     nj = _nj("active", "Calificarea ofertantilor")
-    assert lifecycle.state_of(nj, _iso(30), closed, NOW) == lifecycle.CLOSED
+    assert lifecycle.state_of(nj, _iso(30), closed, now=NOW) == lifecycle.CLOSED
 def test_an_active_status_alone_is_not_proof_that_bidding_is_open():
     """OCDS keeps status=active through qualification and award. Only a live submission
     deadline proves we can still bid; without one the honest answer is 'unknown'."""
-    assert lifecycle.state_of(_nj("active"), None, CLOSED, NOW) == lifecycle.UNKNOWN
+    assert lifecycle.state_of(_nj("active"), None, CLOSED, now=NOW) == lifecycle.UNKNOWN
     assert lifecycle.state_of(_nj("active", "Calificarea ofertantilor"), None,
-                              CLOSED, NOW) == lifecycle.UNKNOWN
+                              CLOSED, now=NOW) == lifecycle.UNKNOWN
 def test_unknown_when_nothing_is_known():
-    assert lifecycle.state_of({}, None, CLOSED, NOW) == lifecycle.UNKNOWN
-    assert lifecycle.state_of(_nj("", ""), "", CLOSED, NOW) == lifecycle.UNKNOWN
+    assert lifecycle.state_of({}, None, CLOSED, now=NOW) == lifecycle.UNKNOWN
+    assert lifecycle.state_of(_nj("", ""), "", CLOSED, now=NOW) == lifecycle.UNKNOWN
 def test_an_unparseable_deadline_is_not_evidence():
-    assert lifecycle.state_of(_nj("active"), "sometime soon", CLOSED, NOW) == lifecycle.UNKNOWN
+    assert lifecycle.state_of(_nj("active"), "sometime soon", CLOSED, now=NOW) == lifecycle.UNKNOWN
 def test_chip_shows_the_real_stage_so_it_can_be_acted_on():
     assert lifecycle.chip(lifecycle.OPEN, {}) == ""
     assert "Bidding closed" in lifecycle.chip(lifecycle.CLOSED, {})

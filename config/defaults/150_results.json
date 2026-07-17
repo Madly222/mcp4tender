@@ -6,5 +6,9 @@
     "cancelled",
     "unsuccessful",
     "withdrawn"
+  ],
+  "results.pending_statuses": [
+    "planning",
+    "planned"
   ]
 }

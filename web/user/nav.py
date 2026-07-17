@@ -13,6 +13,7 @@ NAV = [
              {"href": "/app/qualified?stage=submitted", "label": "Submitted",
               "count": "submitted"},
              {"href": "/app/qualified?stage=skipped", "label": "Skipped", "count": "skipped"},
+             {"href": "/app/planning", "label": "Not open yet", "count": "planning"},
          ]},
     ]),
     ("Everything", [
