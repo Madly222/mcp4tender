@@ -12,6 +12,7 @@ from web.render import _e
 from web.user.counts import nav_counts
 from web.user.icons import icon
 from web.user import dictforms
+from web.user.labels import label_of
 from web.user.forms import FORMS, HANDLED
 from web.user.layout import render
 from web.user.settings_meta import (BY_ID, SECTIONS, keys_in, parse, section_of, vtype_of)
@@ -44,12 +45,11 @@ def _editor(key, value, vtype):
 def _row(key, value, back):
     vtype = vtype_of(value)
     desc = CONFIG_META.get(key, "")
-    short = key.split(".", 1)[1] if "." in key else key
     return ('<form method="post" action="/app/settings/save" class="pref">'
-            f'<div class="pref-h"><label>{_e(short)}</label>'
-            f'<span class="chip plain mono">{_e(key)}</span></div>'
+            f'<div class="pref-h"><label>{_e(label_of(key))}</label></div>'
             + (f'<div class="pref-help" style="margin:0 0 9px">{_e(desc)}</div>' if desc else "")
             + f'<div class="pref-b" style="display:block">{_editor(key, value, vtype)}</div>'
+            f'<div class="keyname" title="the setting\'s name in the engine">{_e(key)}</div>'
             f'<input type="hidden" name="key" value="{_e(key)}">'
             f'<input type="hidden" name="vtype" value="{vtype}">'
             f'<input type="hidden" name="back" value="{_e(back)}">'
@@ -121,8 +121,8 @@ def settings_section(request: Request, section_id: str, saved: str = "", err: st
                   '<div class="strip" style="background:var(--ok-weak);'
                   'border:1px solid var(--ok-line)">'
                   f'<div class="ic" style="background:var(--ok)">{icon("check", 3)}</div>'
-                  f'<div class="tx"><b>Saved</b><span>{_e(saved)} — the engine picks it up on '
-                  "its next run.</span></div></div></div>")
+                  f'<div class="tx"><b>Saved</b><span>{_e(label_of(saved) if "." in saved else saved)}'
+                  " — the engine picks it up on its next run.</span></div></div></div>")
 
     friendly = ""
     if section_id in FORMS:

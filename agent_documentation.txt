@@ -517,6 +517,15 @@ COMPONENT MAP
            sources.genericweb / collect.* editors still render underneath it on the same page -
            which is exactly the "everything in one place" that was asked for. FORMS entries take
            (store, request) now, because this one needs conn and read_only.
+      (12h) DONE: no machine names on screen. web/user/labels.py maps every visible config key to
+           a human title ("Move to the archive after", not "archive_after_days"); the raw key
+           still appears, once, small and muted under the field, because support and the docs
+           need it - it is not shown twice any more.
+           LABELS IS KEYED BY THE FULL KEY, NEVER THE STEM: max_output_tokens exists under
+           applicability/extract/verify/suppliers and means something different in each. A test
+           asserts they all read differently, and another asserts EVERY generated key has a real
+           entry, so adding a config key fails the suite until it is named. humanize() is only a
+           fallback for that gap - do not lean on it.
       (12e) DONE: NO RAW JSON LEFT. web/user/dictforms.py is a SPEC-DRIVEN builder,
            not twelve hand-written forms - SPECS[key] picks one of four kinds and the renderer
            does the rest. Add a spec, get a form; there is no reason to hand-write another one:
