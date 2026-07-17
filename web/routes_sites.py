@@ -10,7 +10,7 @@ from web.sites_common import (_bar, _crawl_rows, _probe_url, _redir_sites,
                               _set_auth, _validate_url, router)
 
 
-@router.post("/sites/add")
+@router.post("/app/settings/sites/add")
 def sites_add(request: Request, kind: str = Form(...), label: str = Form(""),
               url: str = Form(""), category: str = Form(""), notes: str = Form(""),
               batch_size: str = Form("30"), login: str = Form(""), password: str = Form(""),
@@ -61,7 +61,7 @@ def sites_add(request: Request, kind: str = Form(...), label: str = Form(""),
     return _redir_sites(msg="added", err=f"warning: site not reachable now ({rmsg}) — "
                         f"saved anyway, check the URL")
 
-@router.post("/sites/settings")
+@router.post("/app/settings/sites/settings")
 def sites_settings(request: Request, id: str = Form(...), batch_size: str = Form("30")):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -77,7 +77,7 @@ def sites_settings(request: Request, id: str = Form(...), batch_size: str = Form
     store.set("sites.tenders", lst, actor="web", note="set batch via web")
     return _redir_sites(msg=f"batch set: {n} tenders")
 
-@router.post("/sites/auth")
+@router.post("/app/settings/sites/auth")
 def sites_auth(request: Request, id: str = Form(...), login: str = Form(""),
                password: str = Form("")):
     if request.state.readonly:
@@ -86,7 +86,7 @@ def sites_auth(request: Request, id: str = Form(...), login: str = Form(""),
     _set_auth(request.state.conn, id, auth)
     return _redir_sites(msg="login saved" if auth else "login cleared")
 
-@router.post("/sites/reset-cursor")
+@router.post("/app/settings/sites/reset-cursor")
 def sites_reset(request: Request, id: str = Form(...)):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -96,7 +96,7 @@ def sites_reset(request: Request, id: str = Form(...)):
     request.state.conn.commit()
     return _redir_sites(msg="crawl position reset")
 
-@router.post("/sites/remove")
+@router.post("/app/settings/sites/remove")
 def sites_remove(request: Request, kind: str = Form(...), id: str = Form(...)):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -109,7 +109,7 @@ def sites_remove(request: Request, kind: str = Form(...), id: str = Form(...)):
         request.state.conn.commit()
     return _redir_sites(msg="removed")
 
-@router.post("/sites/toggle")
+@router.post("/app/settings/sites/toggle")
 def sites_toggle(request: Request, id: str = Form(...)):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -121,7 +121,7 @@ def sites_toggle(request: Request, id: str = Form(...)):
     store.set("sites.tenders", lst, actor="web", note="toggle site via web")
     return _redir_sites()
 
-@router.post("/sites/search-toggle")
+@router.post("/app/settings/sites/search-toggle")
 def sites_search_toggle(request: Request):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -131,7 +131,7 @@ def sites_search_toggle(request: Request):
     store.set("sources.genericweb", cfg, actor="web", note="toggle web search via web")
     return _redir_sites(msg="web search: " + ("on" if cfg["enabled"] else "off"))
 
-@router.post("/sites/render-toggle")
+@router.post("/app/settings/sites/render-toggle")
 def sites_render_toggle(request: Request, id: str = Form(...)):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")

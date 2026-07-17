@@ -12,7 +12,7 @@ REQUIRED = [
     "web/user/layout.py", "web/user/nav.py", "web/user/routes_home.py",
     "web/user/errors.py", "web/user/cards.py", "web/user/routes_inbox.py",
     "web/user/routes_qualified.py", "web/user/routes_browse.py", "web/user/routes_tender.py", "web/user/routes_prefs.py", "web/user/routes_settings.py",
-    "web/user/settings_meta.py", "web/user/forms.py", "web/user/dictforms.py", "web/user/lifecycle.py", "web/user/routes_planning.py",
+    "web/user/settings_meta.py", "web/user/forms.py", "web/user/dictforms.py", "web/user/lifecycle.py", "web/user/sites_panel.py", "web/user/routes_planning.py",
     "web/settings_ops.py",
     "engine/user_settings.py",
     "workflows/work.py",
@@ -83,6 +83,10 @@ if "ui.theme" not in _UK:
     print("STALE engine/user_settings.py"); sys.exit(1)
 if any(k.startswith(("results.", "triage.", "llm.")) for k in _UK):
     print("BAD engine/user_settings.py: core knobs belong in Company settings")
+    sys.exit(1)
+from web.user.forms import FORMS as _F
+if "sources" not in _F:
+    print("STALE web/user/forms.py: the sites panel must be mounted")
     sys.exit(1)
 from web.user.settings_meta import section_of
 if section_of("web.port") is not None:

@@ -10,7 +10,7 @@ from web.sites_common import (_bar, _crawl_rows, _probe_url, _redir_sites,
                               _set_auth, _validate_url, router)
 
 
-@router.post("/sites/preview")
+@router.post("/app/settings/sites/preview")
 def sites_preview(request: Request, id: str = Form(""), url: str = Form(""),
                   render: str = Form("")):
     store = request.state.store
@@ -31,7 +31,7 @@ def sites_preview(request: Request, id: str = Form(""), url: str = Form(""),
     auth = _load_state(conn, site["id"])["auth"] if site else None
     r = preview_site(store, conn, target, render=do_render, auth=auth)
 
-    back = '<p><a href="/sites">&larr; back to sites</a></p>'
+    back = '<p><a href="/app/settings/sources">&larr; back to sites</a></p>'
     if r.get("error"):
         body = back + f'<div class="err">fetch failed: {_e(r["error"])}</div>'
         return _layout(request, "Site preview", body)
@@ -55,7 +55,7 @@ def sites_preview(request: Request, id: str = Form(""), url: str = Form(""),
         '<div class="card"><div class="empty">no tenders were extracted from this page</div></div>'
     return _layout(request, "Site preview", back + hint + meta + listing)
 
-@router.post("/sites/analyze")
+@router.post("/app/settings/sites/analyze")
 def sites_analyze(request: Request, id: str = Form(""), url: str = Form(""),
                   render: str = Form("")):
     store = request.state.store
@@ -76,7 +76,7 @@ def sites_analyze(request: Request, id: str = Form(""), url: str = Form(""),
     auth = _load_state(conn, site["id"])["auth"] if site else None
     r = analyze_site(store, conn, target, render=do_render, auth=auth)
 
-    back = '<p><a href="/sites">&larr; back to sites</a></p>'
+    back = '<p><a href="/app/settings/sources">&larr; back to sites</a></p>'
     if r.get("error"):
         return _layout(request, "Site analysis",
                        back + f'<div class="err">fetch failed: {_e(r["error"])}</div>')
@@ -124,7 +124,7 @@ def sites_analyze(request: Request, id: str = Form(""), url: str = Form(""),
 _ENGINE_LABELS = {"builtin": "plain HTML", "crawl4ai": "crawl4ai (JS + markdown)"}
 
 
-@router.post("/sites/detect")
+@router.post("/app/settings/sites/detect")
 def sites_detect(request: Request, label: str = Form(""), url: str = Form(""),
                  batch_size: str = Form("30"), login: str = Form(""),
                  password: str = Form("")):

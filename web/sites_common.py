@@ -12,7 +12,8 @@ router = APIRouter()
 def _redir_sites(msg="", err=""):
     from urllib.parse import urlencode
     q = urlencode({k: v for k, v in (("msg", msg), ("err", err)) if v})
-    return RedirectResponse("/sites" + ("?" + q if q else ""), status_code=303)
+    return RedirectResponse("/app/settings/sources" + ("?" + q if q else ""),
+                            status_code=303)
 
 
 def _validate_url(url):

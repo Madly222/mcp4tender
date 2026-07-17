@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from engine.secrets import get_api_key, key_source, mask
 from web import settings_ops
+from web.user.sites_panel import sites_panel
 from web.render import _e
 from web.user.icons import icon
 
@@ -11,6 +12,7 @@ HANDLED = {
     "ai": (),
     "schedule": ("schedule.jobs", "schedule.timezone"),
     "suppliers": ("suppliers.catalog",),
+    "sources": ("sites.tenders", "sites.partners"),
 }
 
 
@@ -36,7 +38,7 @@ def _area(name, lines, rows=4):
     return f'<textarea class="note-in ta" name="{name}" rows="{rows}">{_e(body)}</textarea>'
 
 
-def company_form(store):
+def company_form(store, request=None):
     p = store.get("capabilities.profile", {}) or {}
     vendors = [f"{k} = {v}" for k, v in (p.get("vendor_partnerships") or {}).items()]
     rows = (
@@ -74,7 +76,7 @@ def company_form(store):
             '<button class="btn">Save company</button></div></form>')
 
 
-def keywords_form(store):
+def keywords_form(store, request=None):
     kw = store.get("triage.keyword_weights", {}) or {}
     pos = sorted([(k, v) for k, v in kw.items() if (v or 0) > 0], key=lambda x: -x[1])
     neg = sorted([(k, v) for k, v in kw.items() if (v or 0) < 0], key=lambda x: x[1])
@@ -113,7 +115,7 @@ def keywords_form(store):
             '<button class="btn">Save keywords</button></div></form>')
 
 
-def apikey_form(store):
+def apikey_form(store, request=None):
     key = get_api_key()
     src = key_source()
     if key:
@@ -152,7 +154,7 @@ def apikey_form(store):
             "</div></form>")
 
 
-def schedule_form(store):
+def schedule_form(store, request=None):
     job = settings_ops.collect_job(store)
     tz = store.get("schedule.timezone", "") or ""
     on = " checked" if job.get("enabled") else ""
@@ -234,7 +236,7 @@ def _cat_block(idx, it, currencies):
             f'{rm}</div>')
 
 
-def catalog_form(store):
+def catalog_form(store, request=None):
     items = store.get("suppliers.catalog", []) or []
     items = [i for i in items if isinstance(i, dict)]
     currencies = settings_ops.catalog_currencies(store)
@@ -264,4 +266,5 @@ def catalog_form(store):
 
 
 FORMS = {"company": company_form, "relevance": keywords_form, "ai": apikey_form,
-         "schedule": schedule_form, "suppliers": catalog_form}
+         "schedule": schedule_form, "suppliers": catalog_form,
+         "sources": sites_panel}
