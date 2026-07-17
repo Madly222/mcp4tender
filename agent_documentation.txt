@@ -502,7 +502,22 @@ COMPONENT MAP
            LANGUAGE is NOT done and is not a settings row: every UI string is hardcoded English in
            the renderers. It needs an extraction pass first. Do not add a language picker that
            does nothing.
-      (12e) DONE: NO RAW JSON LEFT except sites.*. web/user/dictforms.py is a SPEC-DRIVEN builder,
+      (12g) DONE: /sites is gone from the admin zone. EVERYTHING about tender sources now lives in
+           ONE user-zone page, /app/settings/sources - MTender, the scraped sites, partner sites,
+           and the operations (collect now, estimate, test, analyse, dedupe, reset cursor, wipe).
+           Victor's call: no split between "settings" and "operations" - a company runs its own
+           sources end to end.
+           The 20 route paths simply moved (/sites/x -> /app/settings/sites/x); the handler bodies
+           are untouched and still tested, and sites_common._redir_sites now returns to the user
+           page. web/sites_view.py is dead weight kept only for reference - its renderer used
+           admin CSS classes, which do not exist in the user zone (it loads only tokens.css +
+           user/*.css), so the markup was rewritten in web/user/sites_panel.py. That is why a page
+           cannot simply be "moved": the two zones share tokens, not classes.
+           The panel is mounted as FORMS["sources"], so the generated sources.mtender /
+           sources.genericweb / collect.* editors still render underneath it on the same page -
+           which is exactly the "everything in one place" that was asked for. FORMS entries take
+           (store, request) now, because this one needs conn and read_only.
+      (12e) DONE: NO RAW JSON LEFT. web/user/dictforms.py is a SPEC-DRIVEN builder,
            not twelve hand-written forms - SPECS[key] picks one of four kinds and the renderer
            does the rest. Add a spec, get a form; there is no reason to hand-write another one:
              pairs  - free {name: value} rows (triage.cpv_weights, suppliers.fx_rates,

@@ -126,7 +126,7 @@ def settings_section(request: Request, section_id: str, saved: str = "", err: st
 
     friendly = ""
     if section_id in FORMS:
-        friendly = FORMS[section_id](store) + '<div class="gap"></div>'
+        friendly = FORMS[section_id](store, request) + '<div class="gap"></div>'
         keys = [k for k in keys if k not in HANDLED.get(section_id, ())]
     for k in dictforms.keys_for(section_id):
         if k in keys:

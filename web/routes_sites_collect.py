@@ -10,7 +10,7 @@ from web.sites_common import (_bar, _crawl_rows, _probe_url, _redir_sites,
                               _set_auth, _validate_url, router)
 
 
-@router.post("/sites/estimate")
+@router.post("/app/settings/sites/estimate")
 def sites_estimate(request: Request, id: str = Form("")):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -27,7 +27,7 @@ def sites_estimate(request: Request, id: str = Form("")):
         return _redir_sites(err=f"estimate: {ex}")
     return _redir_sites(msg="estimate updated")
 
-@router.post("/sites/collect")
+@router.post("/app/settings/sites/collect")
 def sites_collect(request: Request):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -44,7 +44,7 @@ def sites_collect(request: Request):
         msg += f", skipped {r['too_old']} older than the age limit"
     return _redir_sites(msg=msg)
 
-@router.post("/sites/collect-batch")
+@router.post("/app/settings/sites/collect-batch")
 def sites_collect_batch(request: Request, site_id: str = Form("")):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -63,7 +63,7 @@ def sites_collect_batch(request: Request, site_id: str = Form("")):
         msg += f", skipped {r['too_old']} older than the age limit"
     return _redir_sites(msg=msg)
 
-@router.post("/sites/wipe")
+@router.post("/app/settings/sites/wipe")
 def sites_wipe(request: Request):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -71,7 +71,7 @@ def sites_wipe(request: Request):
     n = wipe_collected(request.state.conn, source="genericweb", forget=True)
     return _redir_sites(msg=f"cleared {n} collected tender(s) and reset all progress")
 
-@router.post("/sites/mtender-toggle")
+@router.post("/app/settings/sites/mtender-toggle")
 def sites_mtender_toggle(request: Request):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -81,7 +81,7 @@ def sites_mtender_toggle(request: Request):
     store.set("sources.mtender", cfg, actor="web", note="toggle mtender via web")
     return _redir_sites(msg="MTender API: " + ("on" if cfg["enabled"] else "off"))
 
-@router.post("/sites/collect-mtender")
+@router.post("/app/settings/sites/collect-mtender")
 def sites_collect_mtender(request: Request):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -97,7 +97,7 @@ def sites_collect_mtender(request: Request):
     return _redir_sites(msg=f"MTender: {r.get('new', 0)} new of {r.get('fetched', 0)} fetched")
 
 
-@router.post("/sites/dedupe-mtender")
+@router.post("/app/settings/sites/dedupe-mtender")
 def sites_dedupe_mtender(request: Request):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -106,7 +106,7 @@ def sites_dedupe_mtender(request: Request):
     return _redir_sites(msg=f"MTender dedupe: merged {n} duplicate stage-copy tender(s)")
 
 
-@router.post("/sites/dedupe-docs")
+@router.post("/app/settings/sites/dedupe-docs")
 def sites_dedupe_docs(request: Request):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
@@ -115,7 +115,7 @@ def sites_dedupe_docs(request: Request):
     return _redir_sites(msg=f"Document dedupe: removed {r['documents_removed']} repeated "
                             f"file(s) across {r['tenders_changed']} tender(s)")
 
-@router.post("/sites/engine-toggle")
+@router.post("/app/settings/sites/engine-toggle")
 def sites_engine_toggle(request: Request):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")

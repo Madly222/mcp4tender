@@ -20,13 +20,13 @@ def _login(p):
     return c
 def _store(p):
     s = ConfigStore(db.connect(p)); s.reload(); return s
-def test_only_sites_are_still_raw_json(tmp_path):
+def test_no_raw_json_is_left_anywhere(tmp_path):
     p, conn = _fresh(tmp_path,"d0.db")
     s = ConfigStore(conn); s.reload()
     handled = {k for v in HANDLED.values() for k in v} | set(dictforms.SPECS)
     left = sorted(k for k, v in s.all().items()
                   if section_of(k) and k not in handled and vtype_of(v) == "json")
-    assert left == ["sites.partners", "sites.tenders"], left
+    assert left == [], f"still a JSON textarea: {left}"
     conn.close()
 def test_every_spec_key_belongs_to_a_section():
     for key in dictforms.SPECS:

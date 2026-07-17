@@ -173,7 +173,7 @@ def test_sites_web_add_with_batch_and_login(tmp_path, monkeypatch):
     conn, store = fresh(Path(tmp_path))
     conn.close()
     c = TestClient(create_app(p))
-    c.post("/sites/add", data={"kind": "tenders", "label": "Portal",
+    c.post("/app/settings/sites/add", data={"kind": "tenders", "label": "Portal",
                                "url": "https://a.md/tenders", "batch_size": "30",
                                "login": "user1", "password": "secret"},
            follow_redirects=False)
@@ -202,8 +202,8 @@ def test_sites_web_settings_and_reset(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
     c = TestClient(create_app(p))
-    c.post("/sites/settings", data={"id": "s1", "batch_size": "35"}, follow_redirects=False)
-    c.post("/sites/reset-cursor", data={"id": "s1"}, follow_redirects=False)
+    c.post("/app/settings/sites/settings", data={"id": "s1", "batch_size": "35"}, follow_redirects=False)
+    c.post("/app/settings/sites/reset-cursor", data={"id": "s1"}, follow_redirects=False)
     conn2 = db.connect(p)
     s2 = ConfigStore(conn2)
     s2.reload()
@@ -223,7 +223,7 @@ def test_sites_web_search_toggle(tmp_path, monkeypatch):
     conn, store = fresh(Path(tmp_path))
     conn.close()
     c = TestClient(create_app(p))
-    c.post("/sites/search-toggle", follow_redirects=False)
+    c.post("/app/settings/sites/search-toggle", follow_redirects=False)
     conn2 = db.connect(p)
     s2 = ConfigStore(conn2)
     s2.reload()
@@ -354,7 +354,7 @@ def test_web_analyze_renders(tmp_path, monkeypatch):
     store.set("sources.genericweb", {"enabled": True})
     conn.close()
     c = TestClient(create_app(p))
-    r = c.post("/sites/analyze", data={"url": "https://org.md/"}, follow_redirects=False)
+    r = c.post("/app/settings/sites/analyze", data={"url": "https://org.md/"}, follow_redirects=False)
     assert r.status_code == 200
     assert "page type" in r.text and "add as site" in r.text
 
@@ -448,7 +448,7 @@ def test_web_engine_toggle(tmp_path, monkeypatch):
     conn, store = fresh(Path(tmp_path))
     conn.close()
     c = TestClient(create_app(p))
-    c.post("/sites/engine-toggle", follow_redirects=False)
+    c.post("/app/settings/sites/engine-toggle", follow_redirects=False)
     conn2 = db.connect(p)
     s2 = ConfigStore(conn2)
     s2.reload()

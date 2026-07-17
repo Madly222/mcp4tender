@@ -18,8 +18,7 @@ def _api_only_site(url):
                for h in _API_ONLY_HOSTS)
 
 
-@router.get("/sites")
-def sites(request: Request, msg: str = "", err: str = ""):
+def _retired_admin_sites(request: Request, msg: str = "", err: str = ""):
     store = request.state.store
     conn = request.state.conn
     ro = request.state.readonly

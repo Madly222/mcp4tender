@@ -68,7 +68,7 @@ def test_user_is_kept_out_of_admin_pages(tmp_path, monkeypatch):
     conn.close()
     c, _ = _client(p, "rapidlink", "password1")
     assert c.get("/", follow_redirects=False).headers["location"] == "/app"
-    for path in ("/config", "/sites", "/user-settings", "/analyze", "/results"):
+    for path in ("/config", "/user-settings", "/analyze", "/results"):
         r = c.get(path)
         assert r.status_code == 403, path
         assert "Not available on your account" in r.text
@@ -80,7 +80,7 @@ def test_admin_keeps_full_access(tmp_path, monkeypatch):
     accounts.create(conn, "admin22", "password1", role="admin")
     conn.close()
     c, _ = _client(p, "admin22", "password1")
-    for path in ("/", "/config", "/sites", "/results", "/app"):
+    for path in ("/", "/config", "/app/settings/sources", "/results", "/app"):
         assert c.get(path).status_code == 200, path
 def test_admin_link_hidden_from_users(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
@@ -104,3 +104,17 @@ def test_user_row_is_confined_to_the_user_zone():
     assert may_visit(row, "/static/user/base.css") and may_visit(row, "/logout")
     assert not may_visit(row, "/config") and not may_visit(row, "/")
     assert landing_for(row) == "/app"
+
+
+def test_a_user_owns_the_sites_page(tmp_path, monkeypatch):
+    """Everything about tender sources belongs to the company, not the operator."""
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    p, conn = _fresh(tmp_path, "sites_role.db")
+    accounts.create(conn, "admin22", "password1", role="admin")
+    accounts.create(conn, "rl", "password1", company="SC Rapid Link SRL", role="user")
+    conn.close()
+    c = TestClient(create_app(p), follow_redirects=False)
+    assert c.post("/login", data={"login": "rl", "password": "password1"}).status_code == 303
+    assert c.get("/app/settings/sources").status_code == 200
+    assert c.post("/app/settings/sites/mtender-toggle").status_code == 303
+    assert c.get("/sites").status_code in (403, 404)
