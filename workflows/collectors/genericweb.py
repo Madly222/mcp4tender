@@ -253,6 +253,22 @@ def _auth_headers(auth):
     return None
 
 
+API_COVERED_HOSTS = ("mtender.md", "www.mtender.md", "mtender.gov.md",
+                     "public.mtender.gov.md")
+
+
+def api_covered(url):
+    """Is this host already collected by a dedicated API collector?
+
+    Scraping such a site is pure waste: it costs tokens on the user's key to obtain data
+    we already get free and structured. Worse, the scraped copy is poorer - no OCDS status,
+    no statusDetails, no awards - so it would quietly undo the inbox filter.
+    """
+    from urllib.parse import urlparse
+    host = (urlparse((url or "").strip()).netloc or "").lower().split(":")[0]
+    return any(host == h or host.endswith("." + h) for h in API_COVERED_HOSTS)
+
+
 def _load_state(conn, site_id):
     row = conn.execute(
         "SELECT next_url, auth_json, total_collected, exhausted, total_estimate "
@@ -415,6 +431,10 @@ class GenericWebCollector(Collector):
         too_old = 0
         for site in sites:
             if not site.get("enabled", True) or not site.get("url"):
+                continue
+            if api_covered(site["url"]):
+                log.warning("skipping %s: already collected via its API, scraping it would "
+                            "spend tokens for worse data", site.get("url"))
                 continue
             if only_site and site.get("id") != only_site:
                 continue
