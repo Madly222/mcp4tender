@@ -542,7 +542,16 @@ COMPONENT MAP
         withdrawn - the unambiguous OCDS values), editable in Company settings -> List behaviour.
     Unknown status AND unknown deadline => state "unknown" => the tender is SHOWN with an N/A
     chip. Never hide on missing data; a silently dropped tender is a lost bid.
-    The count of what the filter hid is printed above the table on purpose - do not remove it.
+    The count of what the filter hid is printed above the table on purpose - do not remove it -
+    and carries a "Skip them for good" button posting to /app/inbox/sweep, which marks exactly
+    those tenders as stage=skipped. The sweep is reversible: they appear under
+    /app/qualified?stage=skipped and can be moved back.
+    lifecycle.split(rows, store, decided) is the ONE place the rule lives. The list, the nav badge
+    (web/user/counts.py) and the sweep all call it. They used to disagree: nav_counts ran its own
+    query with no lifecycle filter, so the menu badge counted tenders the list was hiding. If you
+    add a caller, call split() - do not re-implement the condition. counts._RELEVANT must keep its
+    extractions JOIN and ex_fields column, because cards.deadline_of reads row["ex_fields"] to
+    fall back on the deadline extracted from the documents.
     THE BUG THIS UNCOVERED (fixed): cards._left computed the countdown from _stamp(parse_date(x)),
     i.e. MIDNIGHT of the deadline day, and compared it to now. Once the clock passed 00:00 the
     floor division lost a whole day, so EVERY label was off by one: a tender closing today read

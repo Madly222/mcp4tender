@@ -32,3 +32,24 @@ def chip(state):
         return ""
     cls = "bad" if state == CLOSED else "plain"
     return f'<span class="chip {cls}">{LABEL[state]}</span>'
+
+
+def split(rows, store, decided=()):
+    """Partition rows into (kept_with_state, closed_ids).
+
+    The ONLY place the inbox rule lives. The list, the nav badge and the sweep all call
+    this, so a tender can never be visible in one and counted in another.
+    """
+    from web.user import cards
+    closed = closed_statuses(store)
+    kept, gone = [], []
+    for r in rows:
+        if r["id"] in decided:
+            continue
+        nj = cards.nj_of(r)
+        state = state_of(nj.get("status"), cards.deadline_of(r, nj)[0], closed)
+        if state == CLOSED:
+            gone.append(r["id"])
+        else:
+            kept.append((r, state))
+    return kept, gone
