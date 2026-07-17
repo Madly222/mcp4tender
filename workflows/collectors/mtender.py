@@ -37,6 +37,44 @@ def _all_compiled(record_package):
     return out
 
 
+def _latest(crs, getter):
+    """Value from the most recently dated compiled release that has one.
+
+    MTender packs several records under one ocid - planning, tender, award - and they
+    advance independently. _first() would answer with whichever record happens to come
+    first in the list, which is how a tender at the awarding stage kept reporting
+    statusDetails="negotiation" from records[0]. For anything describing WHERE THE
+    PROCEDURE IS NOW, the freshest release is the only honest answer.
+    """
+    best, best_date = None, None
+    for cr in crs:
+        try:
+            v = getter(cr)
+        except (AttributeError, TypeError):
+            continue
+        if v in (None, "", [], {}):
+            continue
+        d = str(cr.get("date") or "")
+        if best_date is None or d >= best_date:
+            best, best_date = v, d
+    return best
+
+
+def _awarded(crs):
+    """True once an award or a contract exists, whatever the portal calls the stage.
+
+    Structural, so it survives a change of vocabulary or language: if somebody is being
+    awarded the job, the submission window is shut. An award with status "pending" still
+    counts - the evaluation is under way and we are not in it.
+    """
+    for cr in crs:
+        for key in ("awards", "contracts"):
+            items = cr.get(key)
+            if isinstance(items, list) and any(isinstance(i, dict) and i for i in items):
+                return True
+    return False
+
+
 def _first(crs, getter):
     for cr in crs:
         try:
@@ -156,8 +194,10 @@ def normalize_record(record_package, ocid):
         "ocid": ocid,
         "title": tg("title"),
         "description": tg("description"),
-        "status": tg("status"),
-        "status_details": tg("statusDetails"),
+        "status": _latest(crs, lambda cr: (cr.get("tender") or {}).get("status")),
+        "status_details": _latest(
+            crs, lambda cr: (cr.get("tender") or {}).get("statusDetails")),
+        "awarded": _awarded(crs),
         "buyer": _buyer_name(crs),
         "value_amount": value.get("amount"),
         "value_currency": value.get("currency"),
