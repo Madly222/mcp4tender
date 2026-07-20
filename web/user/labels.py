@@ -40,7 +40,7 @@ LABELS = {
     "verify.max_source_chars": "Source text given to the checker",
     "verify.strictness": "How strict the checker is",
 
-    "results.new_days": "A tender counts as new for",
+    "results.new_days": "Drop undecided tenders from the inbox after",
     "results.archive_after_days": "Move to the archive after",
     "results.closed_statuses": "Statuses that mean bidding is over",
     "results.pending_statuses": "Statuses that mean bidding has not started",

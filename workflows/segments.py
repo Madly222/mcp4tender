@@ -36,10 +36,15 @@ def classify_segment(origin, created_at, pub_date, deadline, now=None,
     found = dt.datetime.fromtimestamp(created_at).date() if created_at else today
     if archive_reason(pub_date, deadline, found, now, archive_days):
         return "archive"
-    found_age = (today - found).days
-    if origin == "incremental" and found_age <= new_days:
-        return "new"
-    return "history"
+    if origin != "incremental":
+        return "history"
+    # new_days <= 0 means "no age ceiling": an UNDECIDED tender must never age out of the
+    # inbox on its own. Removal from the inbox is the user's job (keep / skip) or the
+    # lifecycle filter's (bidding closed) - never the calendar's. A positive new_days is
+    # kept only as an optional cap for anyone who wants the old behaviour.
+    if new_days and (today - found).days > new_days:
+        return "history"
+    return "new"
 
 
 def classify_row(row, store, now=None):

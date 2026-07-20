@@ -3,6 +3,15 @@ TENDERENGINE — MAINTENANCE MAP (for AI handoff)
 B2G tender-monitoring platform for SC Rapid Link SRL (Moldova). Python 3.10, FastAPI + SQLite,
 Ubuntu 22.04, venv at ~/tenderengine/.venv, no Docker. User: Victor (speaks Russian; UI is English).
 
+LATEST STATE (2026-07-20)
+-------------------------
+539 tests pass (pytest -q --ignore=tests/test_phase4b.py). The whole user zone at /app is built:
+inbox, qualified, tender detail, search, archive, preferences (theme), and Company settings with
+EVERY setting as a human form (no raw JSON anywhere). Sites live at /app/settings/sources. Inbox
+has the lifecycle filter (open/closed/pending/awarded), a "Not open yet" page, and as of today the
+age-out bug is fixed (see [18g]). Next chat's main job: the keep -> ... -> partners journey, item
+(16b) in the roadmap. Admin still holds duplicated settings pages pending items (15)-(16).
+
 HOW TO USE THIS FILE
 --------------------
 The project is split into small, focused files grouped by COMPONENT below. To work on ONE thing in a
@@ -525,6 +534,15 @@ COMPONENT MAP
            actor, note, created_at) and the admin /config/rollback route restores one. Nothing of
            that is exposed in /app/settings. Do this BEFORE (16) - it is the only thing /config
            still does that the user zone cannot.
+      (16b) NEXT, described by Victor Jul 20, the BIG one: carry a tender the whole way through the
+           pipeline once the user hits the green check in the inbox. Today the check just sets
+           tender_work.stage = "qualified" (STAGES: inbox -> qualified -> in_progress -> submitted
+           -> won/lost, plus skipped). The goal is that "keep" kicks off the real qualification
+           journey and follows it end to end, all the way to PARTNERS - i.e. when a kept tender
+           needs equipment/services the company itself does not supply, surface the matching
+           partner from sites.partners / the supplier catalog and drive that hand-off. Victor
+           flagged "there will be its own subtleties" around partners - do NOT design it blind,
+           get the specifics from him first. This is the next chat's main thread.
       (16) NEXT, not started: DELETE the duplicated admin pages. Every one of these is now fully
            covered by /app/settings and nothing needs porting - they are pure duplication that
            will drift: /config (+ /config/item, /config/save, /config/rollback), /user-settings
@@ -650,6 +668,20 @@ COMPONENT MAP
     today read "closed", tomorrow's read "today", "2 days left" meant three. Use
     engine.dateparse.day_end_ts (23:59:59) for all deadline maths; cards._left, routes_home
     alerts, routes_qualified alerts and its sort all go through it now.
+
+[18g] THE INBOX IS DECISION-BOXED, NOT TIME-BOXED (fixed Jul 20):
+    An undecided tender must stay in the inbox until the USER acts (keep/skip) or bidding closes.
+    Nothing may remove it on the calendar's say-so. The bug: segments.classify_segment returned
+    "history" once (today - found).days > new_days (default was 7), so a tender found 8+ days ago
+    silently left the inbox although nobody had touched it. Reported live on "Analizor de spectru"
+    (found 2026-07-13, deadline 21.07) disappearing on its own, twice.
+    FIX: new_days is now an OPTIONAL cap and defaults to 0 = no ceiling. classify_segment only
+    demotes to history when new_days > 0 AND the age exceeds it. Removal from the inbox is owned by
+    exactly two things and no third: the user (tender_work stage) and lifecycle.split (bidding
+    closed). If you ever add a third way for a tender to leave the inbox, it is almost certainly a
+    bug - undecided + biddable = visible, full stop.
+    The setting results.new_days is relabelled "Drop undecided tenders from the inbox after"; 0
+    means never. Do not restore a non-zero default.
 
 [18f] FEED / API PROBE ON A NEW SITE (workflows/collectors/feed_probe.py) - DONE, HALF-WIRED:
     probe(url, fetch=None) tries, in order: RSS/Atom declared by the page's own
