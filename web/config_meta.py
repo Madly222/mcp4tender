@@ -19,7 +19,7 @@ CONFIG_META = {
     "schedule.timezone": "IANA timezone the scheduler uses to decide when jobs run, e.g. 'Europe/Chisinau'. Empty = server local time.",
     "schedule.jobs": "Jobs run by the background scheduler. Pipeline job: {pipeline, at:[HH:MM], enabled}. Collect job: {kind:'collect', sources:[mtender,genericweb], days:[0-6 or mon..sun, empty=every day], at:[HH:MM], analyze:true, enabled}. Max 24 times/day; each collect run fetches incrementally and (analyze=true) runs triage..suppliers on pending items (batch = analyze.batch_size).",
 
-    "results.new_days": "How many days a tender stays in the 'New' tab after it was first found. Only incremental daily finds can be 'New'.",
+    "results.new_days": "Days before an untouched tender leaves the inbox on its own. 0 (the default) means never — a tender stays until you keep or skip it, or bidding closes. Raise it only if you want old undecided tenders to fall away automatically.",
     "results.archive_after_days": "A tender is archived once its submission deadline has passed, or - when it has no deadline - once it is older than this many days (by publication date, or found date if none). A tender with a future deadline is never archived by age. Archived tenders are kept, never deleted.",
     "collect.max_age_days": "Hard ceiling for collection. A tender is skipped at collect time if its deadline has already passed, or - when it has no deadline - if it is older than this many days. The effective ceiling is the smaller of this and results.archive_after_days, so a historical back-fill never stores tenders that would land straight in Archive. Undated tenders are always kept.",
 

@@ -47,14 +47,14 @@ def test_the_page_shows_names_not_variables(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"lb2.db"); conn.close()
     h = _login(p).get("/app/settings/lists").text
-    assert "Move to the archive after" in h and "A tender counts as new for" in h
+    assert "Move to the archive after" in h and "Drop undecided tenders from the inbox after" in h
     assert "<label>archive_after_days</label>" not in h
     assert "results.archive_after_days" in h, "the engine name stays available, just quietly"
 def test_the_saved_banner_names_the_setting(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"lb3.db"); conn.close()
     h = _login(p).get("/app/settings/lists?saved=results.new_days").text
-    assert "A tender counts as new for — the engine picks it up" in h
+    assert "Drop undecided tenders from the inbox after — the engine picks it up" in h
 def test_dict_form_subfields_are_named_too(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"lb4.db"); conn.close()
