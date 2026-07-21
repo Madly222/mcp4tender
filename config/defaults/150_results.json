@@ -5,7 +5,9 @@
     "complete",
     "cancelled",
     "unsuccessful",
-    "withdrawn"
+    "withdrawn",
+    "anulat",
+    "anulată"
   ],
   "results.pending_statuses": [
     "planning",
