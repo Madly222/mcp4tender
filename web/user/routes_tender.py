@@ -6,7 +6,7 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from engine.dateparse import humanize
-from web.render import _e, _loose, source_url
+from web.render import _e, _loose
 from web.user import cards
 from web.user.counts import nav_counts
 from web.user.icons import icon
@@ -47,7 +47,7 @@ def _fact(label, value):
 
 
 def _facts(row, nj, portal=None):
-    url = source_url(row["source"], row["external_id"], portal)
+    url = cards.tender_link(row, nj, portal)
     portal = (f'<a href="{_e(url)}" target=_blank>Open on the portal</a>' if url else DASH)
     cpv = nj.get("cpv") or []
     chips = ""
@@ -68,7 +68,7 @@ def _facts(row, nj, portal=None):
     if estimated:
         dl += ' <span class="chip plain">estimated</span>'
     body = (_fact("Reference", f'<span class="mono">{_e(row["external_id"] or DASH)}</span>')
-            + _fact("Source", f'{_e(row["source"] or DASH)} · {portal}')
+            + _fact("Source", f'{_e(cards.source_label(row, nj))} · {portal}')
             + _fact("Buyer", _e(nj.get("buyer") or DASH))
             + _fact("Value", f'<span class="num">{val}</span>')
             + _fact("Published", _e(humanize(nj.get("publication_date") or nj.get("published"),

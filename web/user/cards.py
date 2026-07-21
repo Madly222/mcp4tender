@@ -18,6 +18,23 @@ def portal_of(store):
     return (store.get("sources.mtender", {}) or {}).get("portal_url_template")
 
 
+def source_label(row, nj):
+    src = row["source"] or ""
+    if src == "genericweb":
+        return (nj or {}).get("source_site") or "web"
+    return src
+
+
+def tender_link(row, nj, portal=None):
+    url = source_url(row["source"], row["external_id"], portal)
+    if url:
+        return url
+    u = (nj or {}).get("url")
+    if isinstance(u, str) and u.startswith(("http://", "https://")):
+        return u
+    return None
+
+
 def nj_of(row):
     nj = _loose(row["normalized_json"])
     return nj if isinstance(nj, dict) else {}
@@ -66,14 +83,15 @@ def cell_when(row, nj, now):
     return f'<td class="t-when"><b class="num">{_e(pretty)}</b>{_left(raw, now)}{est}</td>'
 
 
-def cell_ref(row):
+def cell_ref(row, nj=None):
+    nj = nj if nj is not None else nj_of(row)
     ext = _e(row["external_id"] or DASH)
-    src = _e(row["source"] or "")
+    src = _e(source_label(row, nj))
     return f'<td><span class="t-ref">{ext}</span><span class="chip plain">{src}</span></td>'
 
 
 def cell_tender(row, nj, portal=None, extra=""):
-    url = source_url(row["source"], row["external_id"], portal)
+    url = tender_link(row, nj, portal)
     title = _e(nj.get("title") or "(untitled)")
     href = f' href="/app/tender/{row["id"]}"'
     tags = []
