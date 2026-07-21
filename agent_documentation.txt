@@ -3,14 +3,34 @@ TENDERENGINE — MAINTENANCE MAP (for AI handoff)
 B2G tender-monitoring platform for SC Rapid Link SRL (Moldova). Python 3.10, FastAPI + SQLite,
 Ubuntu 22.04, venv at ~/tenderengine/.venv, no Docker. User: Victor (speaks Russian; UI is English).
 
-LATEST STATE (2026-07-20)
+LATEST STATE (2026-07-21)
 -------------------------
-539 tests pass (pytest -q --ignore=tests/test_phase4b.py). The whole user zone at /app is built:
+544 tests pass (pytest -q --ignore=tests/test_phase4b.py). The whole user zone at /app is built:
 inbox, qualified, tender detail, search, archive, preferences (theme), and Company settings with
 EVERY setting as a human form (no raw JSON anywhere). Sites live at /app/settings/sources. Inbox
-has the lifecycle filter (open/closed/pending/awarded), a "Not open yet" page, and as of today the
-age-out bug is fixed (see [18g]). Next chat's main job: the keep -> ... -> partners journey, item
-(16b) in the roadmap. Admin still holds duplicated settings pages pending items (15)-(16).
+has the lifecycle filter (open/closed/pending/awarded), a "Not open yet" page, the age-out bug is
+fixed (see [18g]), and the site Analyse/Test 500 is fixed (see [18i]).
+
+  !! PENDING PUSH: the Analyse/Test fix (files in [18i]: genericweb_analyze.py, routes_sites_diag.py,
+     tests/test_site_analyze.py, tests/test_sites.py) was delivered as a tar but may not be pushed
+     yet. main was last seen at commit b96c883 WITHOUT it. FIRST THING in a new chat: clone fresh
+     and check whether [18i] is in the tree; if grep for "AI analysis failed" in
+     workflows/collectors/genericweb_analyze.py is empty, it is not pushed - ask Victor.
+
+  ACHIZITII = MTENDER, CONFIRMED (2026-07-21): achizitii.md and MTender are the SAME procurement
+  system, two front-ends. Proven live: tender "Compresor de aer de inalta presiune (repetat)",
+  same buyer, same 250000 MDL, appeared TWICE in the inbox - once via genericweb (scraped
+  achizitii, ref 9c6f99c6...) and once via mtender API (ref ocds-b3wdp1-MD-...), with DIFFERENT
+  deadlines (27.07 vs 30.07) and the mtender copy richer (has CPV, portal link). So scraping
+  achizitii is pure waste + duplicates + desync. DECISION PENDING with Victor: remove achizitii
+  from sites.tenders, and optionally add its host to genericweb.API_COVERED_HOSTS (see [18e]) so it
+  can never be scraped again. Do NOT treat achizitii as a real second source.
+
+Next chat's main job: the keep -> ... -> partners journey, item (16b) in the roadmap. When the user
+hits the green check in the inbox today, it ONLY sets tender_work.stage="qualified" - no analysis
+of requirements / what we can supply / partners runs yet. Victor confirmed that is the intended
+next build and flagged "there will be its own subtleties" around partners - get specifics first.
+Admin still holds duplicated settings pages pending items (15)-(16).
 
 HOW TO USE THIS FILE
 --------------------
