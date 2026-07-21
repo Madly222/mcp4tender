@@ -725,6 +725,29 @@ COMPONENT MAP
     Match on the HOST, never a substring: "notmtender.md.evil.com" must not be treated as covered.
     There is a test for exactly that.
 
+[18i] SITE ANALYSE / TEST 500 FIXED (Jul 21), and how these diag pages must render:
+    Pressing "Analyse" on a web site (POST /app/settings/sites/analyze, web/routes_sites_diag.py)
+    gave Internal Server Error. Two root causes, both fixed:
+      1. analyze_site (workflows/collectors/genericweb_analyze.py) fetched the page inside a
+         try/except but then called the LLM (gw.complete) with NO guard. On the real box the page
+         fetch succeeds and the model call fails (no/rejected API key), so the exception was
+         unhandled -> 500. Now the LLM call is wrapped and returns
+         {"error": "AI analysis failed: ... Is the API key set and working
+         (Company settings -> AI models and cost)?"}. loads_loose reads (out or {}).get("text").
+      2. sites_analyze and sites_preview rendered via the ADMIN _layout/_table and admin CSS
+         classes (.err/.kv/.v-ok) with dead /sites/* form actions. Rewritten to render through the
+         user-zone shell: helpers _kv(pairs) and _page(request,title,body) (uses nav_counts +
+         work.account_id + a "Back to sites" crumb), user-zone chips/cards, and form actions fixed
+         to /app/settings/sites/{analyze,add}. Both handlers now wrap analyze_site/preview_site in
+         try/except and fall back to _redir_sites(err=...), so nothing here can 500 again.
+    account_id returns 0 in token mode (no logged-in account), so these pages also render for the
+    admin/token client without an account row. tests/test_site_analyze.py covers the LLM-failure,
+    fetch-failure, genericweb-off, and user-shell-render cases.
+    STILL TO DO (Victor's ask, deferred): the Analyse button currently shows on EVERY site card.
+    Victor wants it to appear only once a site is "100% ready" - i.e. we already know what is
+    taken from where (feed/selectors confirmed). Not yet implemented; needs a per-site "ready"
+    flag and gating the button on it.
+
 [18b] PYTHON VERSION TRAP: production runs 3.10, agents usually develop on 3.12. Consequences:
     * dt.UTC and datetime.UTC are 3.11+. Use dt.timezone.utc. Same for any 3.11/3.12-only syntax -
       verify_install.py py_compiles everything for exactly this reason; run it before restarting.

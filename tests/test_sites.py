@@ -356,7 +356,8 @@ def test_web_analyze_renders(tmp_path, monkeypatch):
     c = TestClient(create_app(p))
     r = c.post("/app/settings/sites/analyze", data={"url": "https://org.md/"}, follow_redirects=False)
     assert r.status_code == 200
-    assert "page type" in r.text and "add as site" in r.text
+    assert "Page type" in r.text and "Add as site" in r.text
+    assert 'href="/static/tokens.css' in r.text, "renders in the user shell, not the admin layout"
 
 
 def test_stall_below_estimate_is_not_all_collected(tmp_path, monkeypatch):

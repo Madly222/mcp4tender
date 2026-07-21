@@ -37,10 +37,14 @@ def analyze_site(store, conn, url, render=False, auth=None, engine=None):
     except Exception as exc:
         return {"error": str(exc), "url": url}
     gw = LLMGateway(store, conn)
-    out = gw.complete("site_analyze", ANALYZE_PROMPT,
-                      [{"role": "user", "content": f"PAGE URL: {url}\n\n{text}"}],
-                      max_tokens=int(sc.get("max_output_tokens", 8192)), prefill="{")
-    data = loads_loose(out["text"])
+    try:
+        out = gw.complete("site_analyze", ANALYZE_PROMPT,
+                          [{"role": "user", "content": f"PAGE URL: {url}\n\n{text}"}],
+                          max_tokens=int(sc.get("max_output_tokens", 8192)), prefill="{")
+    except Exception as exc:
+        return {"error": f"AI analysis failed: {exc}. Is the API key set and working "
+                         "(Company settings -> AI models and cost)?", "url": url}
+    data = loads_loose((out or {}).get("text") or "")
     if not isinstance(data, dict):
         data = {}
     follow = []
