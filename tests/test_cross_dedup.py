@@ -76,10 +76,13 @@ def test_different_buyer_is_not_a_duplicate(tmp_path):
 def test_overwrite_keeps_closed_signal(tmp_path):
     conn = _conn(tmp_path)
     store = FakeStore(["achizitii", "mtender"])
-    _store_item(conn, "mtender",
-                _item("mtender", "Air compressor", "Town Hall",
-                      {"awarded": True, "status_details": "awarding"}),
+    _store_item(conn, "mtender", _item("mtender", "Air compressor", "Town Hall"),
                 "incremental", store)
+    conn.execute(
+        "UPDATE tenders SET normalized_json = ? WHERE source = 'mtender'",
+        (json.dumps({"title": "Air compressor", "buyer": "Town Hall",
+                     "awarded": True, "status_details": "awarding"}),))
+    conn.commit()
     _store_item(conn, "genericweb", _item("achizitii", "Air compressor", "Town Hall"),
                 "incremental", store)
     rows = _rows(conn)

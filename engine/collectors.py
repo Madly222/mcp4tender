@@ -9,6 +9,7 @@ from typing import Any
 
 from .hashing import content_hash
 from . import dedup
+from . import lifecycle
 
 log = logging.getLogger("tenderengine.collector")
 
@@ -86,17 +87,20 @@ def _origin_for(params):
     return "backfill" if (params or {}).get("mode") == "backfill" else "incremental"
 
 
+def _remember_raw(conn, source, external_id, chash, now, raw):
+    conn.execute(
+        "INSERT OR IGNORE INTO raw_documents(source, external_id, content_hash, fetched_at, "
+        "payload_json) VALUES(?,?,?,?,?)",
+        (source, external_id, chash, now, json.dumps(raw, ensure_ascii=False)),
+    )
+
+
 def _store_item(conn, source, item: CollectedItem, origin="incremental", store=None):
     now = time.time()
     if conn.execute("SELECT 1 FROM dismissed_tenders WHERE external_id = ?",
                     (item.external_id,)).fetchone():
         return False
     chash = content_hash(item.normalized)
-    conn.execute(
-        "INSERT OR IGNORE INTO raw_documents(source, external_id, content_hash, fetched_at, "
-        "payload_json) VALUES(?,?,?,?,?)",
-        (source, item.external_id, chash, now, json.dumps(item.raw, ensure_ascii=False)),
-    )
     dkey = dedup.dedup_key(item.normalized.get("title"), item.normalized.get("buyer"))
     existing = conn.execute(
         "SELECT id, content_hash FROM tenders WHERE source = ? AND external_id = ?",
@@ -114,6 +118,7 @@ def _store_item(conn, source, item: CollectedItem, origin="incremental", store=N
                 theirs = dedup.rank_of(store, dup["source"], dup["external_id"])
                 if mine < theirs:
                     merged = dedup.carry_closed(item.normalized, dup["normalized_json"])
+                    _remember_raw(conn, source, item.external_id, chash, now, item.raw)
                     conn.execute(
                         "UPDATE tenders SET source = ?, external_id = ?, content_hash = ?, "
                         "normalized_json = ?, dedup_key = ?, status = ?, updated_at = ? WHERE id = ?",
@@ -121,6 +126,9 @@ def _store_item(conn, source, item: CollectedItem, origin="incremental", store=N
                          json.dumps(merged, ensure_ascii=False), dkey, "updated", now, dup["id"]),
                     )
                 return False
+        if store is not None and not lifecycle.keep_on_collect(item.normalized, store):
+            return False
+        _remember_raw(conn, source, item.external_id, chash, now, item.raw)
         conn.execute(
             "INSERT INTO tenders(source, external_id, content_hash, normalized_json, status, "
             "origin, dedup_key, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
@@ -128,6 +136,7 @@ def _store_item(conn, source, item: CollectedItem, origin="incremental", store=N
              json.dumps(item.normalized, ensure_ascii=False), "new", origin, dkey, now, now),
         )
         return True
+    _remember_raw(conn, source, item.external_id, chash, now, item.raw)
     if existing["content_hash"] != chash:
         conn.execute(
             "UPDATE tenders SET content_hash = ?, normalized_json = ?, dedup_key = ?, "
