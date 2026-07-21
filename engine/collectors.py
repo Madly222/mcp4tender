@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .hashing import content_hash
+from . import dedup
 
 log = logging.getLogger("tenderengine.collector")
 
@@ -85,7 +86,7 @@ def _origin_for(params):
     return "backfill" if (params or {}).get("mode") == "backfill" else "incremental"
 
 
-def _store_item(conn, source, item: CollectedItem, origin="incremental"):
+def _store_item(conn, source, item: CollectedItem, origin="incremental", store=None):
     now = time.time()
     if conn.execute("SELECT 1 FROM dismissed_tenders WHERE external_id = ?",
                     (item.external_id,)).fetchone():
@@ -96,23 +97,42 @@ def _store_item(conn, source, item: CollectedItem, origin="incremental"):
         "payload_json) VALUES(?,?,?,?,?)",
         (source, item.external_id, chash, now, json.dumps(item.raw, ensure_ascii=False)),
     )
+    dkey = dedup.dedup_key(item.normalized.get("title"), item.normalized.get("buyer"))
     existing = conn.execute(
         "SELECT id, content_hash FROM tenders WHERE source = ? AND external_id = ?",
         (source, item.external_id),
     ).fetchone()
     if existing is None:
+        if store is not None and dkey:
+            dup = conn.execute(
+                "SELECT id, source, external_id, normalized_json FROM tenders WHERE dedup_key = ?",
+                (dkey,),
+            ).fetchone()
+            if dup is not None and dedup.token_of(source, item.external_id) != \
+                    dedup.token_of(dup["source"], dup["external_id"]):
+                mine = dedup.rank_of(store, source, item.external_id)
+                theirs = dedup.rank_of(store, dup["source"], dup["external_id"])
+                if mine < theirs:
+                    merged = dedup.carry_closed(item.normalized, dup["normalized_json"])
+                    conn.execute(
+                        "UPDATE tenders SET source = ?, external_id = ?, content_hash = ?, "
+                        "normalized_json = ?, dedup_key = ?, status = ?, updated_at = ? WHERE id = ?",
+                        (source, item.external_id, content_hash(merged),
+                         json.dumps(merged, ensure_ascii=False), dkey, "updated", now, dup["id"]),
+                    )
+                return False
         conn.execute(
             "INSERT INTO tenders(source, external_id, content_hash, normalized_json, status, "
-            "origin, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)",
+            "origin, dedup_key, created_at, updated_at) VALUES(?,?,?,?,?,?,?,?,?)",
             (source, item.external_id, chash,
-             json.dumps(item.normalized, ensure_ascii=False), "new", origin, now, now),
+             json.dumps(item.normalized, ensure_ascii=False), "new", origin, dkey, now, now),
         )
         return True
     if existing["content_hash"] != chash:
         conn.execute(
-            "UPDATE tenders SET content_hash = ?, normalized_json = ?, status = ?, updated_at = ? "
-            "WHERE id = ?",
-            (chash, json.dumps(item.normalized, ensure_ascii=False), "updated", now,
+            "UPDATE tenders SET content_hash = ?, normalized_json = ?, dedup_key = ?, "
+            "status = ?, updated_at = ? WHERE id = ?",
+            (chash, json.dumps(item.normalized, ensure_ascii=False), dkey, "updated", now,
              existing["id"]),
         )
         return True
@@ -172,7 +192,7 @@ def run_collector(source, store, conn, params=None):
         origin = _origin_for(params)
         new_count = 0
         for item in result.items:
-            if _store_item(conn, source, item, origin):
+            if _store_item(conn, source, item, origin, store):
                 new_count += 1
         conn.commit()
         cursor_after = result.cursor if result.cursor is not None else cursor_before
