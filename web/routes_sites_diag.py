@@ -5,9 +5,28 @@ import uuid
 
 from fastapi import Form, Request
 
-from web.render import _e, _layout, _table
+from web.render import _e
 from web.sites_common import (_bar, _crawl_rows, _probe_url, _redir_sites,
                               _set_auth, _validate_url, router)
+from web.user.counts import nav_counts
+from web.user.icons import icon
+from web.user.layout import render as _urender
+from workflows import work
+
+
+def _kv(pairs):
+    rows = ''.join(
+        f'<div class="fact"><span class="fk">{_e(k)}</span>'
+        f'<span class="fv">{v}</span></div>' for k, v in pairs)
+    return f'<div class="card"><div class="card-b">{rows}</div></div>'
+
+
+def _page(request, title, body):
+    conn, store = request.state.conn, request.state.store
+    crumb = '<a class="btn ghost sm" href="/app/settings/sources">Back to sites</a>'
+    acct = work.account_id(request)
+    return _urender(request, title, body, heading=title, heading_icon='search',
+                    actions=crumb, counts=nav_counts(conn, store, acct))
 
 
 @router.post("/app/settings/sites/preview")
@@ -29,31 +48,34 @@ def sites_preview(request: Request, id: str = Form(""), url: str = Form(""),
         return _redir_sites(err="web search is off (turn it on first)")
     do_render = bool(site.get("render")) if site else (render in ("1", "on"))
     auth = _load_state(conn, site["id"])["auth"] if site else None
-    r = preview_site(store, conn, target, render=do_render, auth=auth)
-
-    back = '<p><a href="/app/settings/sources">&larr; back to sites</a></p>'
+    try:
+        r = preview_site(store, conn, target, render=do_render, auth=auth)
+    except Exception as exc:
+        return _redir_sites(err=f"test failed: {exc}")
     if r.get("error"):
-        body = back + f'<div class="err">fetch failed: {_e(r["error"])}</div>'
-        return _layout(request, "Site preview", body)
+        return _redir_sites(err=f"fetch failed: {r['error']}")
     hint = ""
     if do_render and not r["rendered"]:
-        hint = ('<div class="err">JS rendering was requested but is not available on the '
-                'server — showing the plain-HTML result. Install Playwright '
-                '(<span class=mono>pip install playwright &amp;&amp; playwright install chromium</span>) '
-                'to read JavaScript sites.</div>')
-    meta = (f'<div class="card"><div class="kv">'
-            f'<div class=k>URL</div><div class="mono">{_e(target)}</div>'
-            f'<div class=k>rendered with JS</div><div>{"yes" if r["rendered"] else "no"}</div>'
-            f'<div class=k>readable text</div><div>{_e(r["chars"])} characters</div>'
-            f'<div class=k>tenders found</div><div>{_e(r["count"])}</div>'
-            f'<div class=k>next page link</div><div>{"found" if r["next"] else "not found"}</div>'
-            f'<div class=k>total estimate</div><div>{_e(r["estimate"]) if r["estimate"] else "—"}</div>'
-            f'<div class=k>diagnosis</div><div>{_e(r["note"])}</div>'
-            f'</div></div>')
-    rows = [[_e(t)] for t in r["titles"]]
-    listing = _table(["Sample tender titles (first 10)"], rows) if rows else \
-        '<div class="card"><div class="empty">no tenders were extracted from this page</div></div>'
-    return _layout(request, "Site preview", back + hint + meta + listing)
+        hint = (f'<div class="note" style="margin-bottom:12px">{icon("bang")}'
+                '<span>JS rendering was requested but is not available on the server — showing '
+                "the plain-HTML result.</span></div>")
+    meta = _kv([
+        ("URL", f'<span class="mono">{_e(target)}</span>'),
+        ("Rendered with JS", "yes" if r["rendered"] else "no"),
+        ("Readable text", f'{_e(r["chars"])} characters'),
+        ("Tenders found", _e(r["count"])),
+        ("Next-page link", "found" if r["next"] else "not found"),
+        ("Total estimate", _e(r["estimate"]) if r["estimate"] else "—"),
+        ("Diagnosis", _e(r["note"])),
+    ])
+    if r["titles"]:
+        items = "".join(f'<li>{_e(t)}</li>' for t in r["titles"])
+        listing = ('<div class="card"><div class="card-h"><h2>Sample tenders on this page</h2>'
+                   f'</div><div class="card-b"><ul class="tlist">{items}</ul></div></div>')
+    else:
+        listing = ('<div class="card"><div class="empty">No tenders were extracted from this '
+                   "page.</div></div>")
+    return _page(request, "Site test", hint + meta + '<div class="gap"></div>' + listing)
 
 @router.post("/app/settings/sites/analyze")
 def sites_analyze(request: Request, id: str = Form(""), url: str = Form(""),
@@ -74,51 +96,53 @@ def sites_analyze(request: Request, id: str = Form(""), url: str = Form(""),
         return _redir_sites(err="web search is off (turn it on first)")
     do_render = bool(site.get("render")) if site else (render in ("1", "on"))
     auth = _load_state(conn, site["id"])["auth"] if site else None
-    r = analyze_site(store, conn, target, render=do_render, auth=auth)
-
-    back = '<p><a href="/app/settings/sources">&larr; back to sites</a></p>'
+    try:
+        r = analyze_site(store, conn, target, render=do_render, auth=auth)
+    except Exception as exc:
+        return _redir_sites(err=f"analysis failed: {exc}")
     if r.get("error"):
-        return _layout(request, "Site analysis",
-                       back + f'<div class="err">fetch failed: {_e(r["error"])}</div>')
-    verdict = ('<span class="v-ok">yes</span>' if r["has_tenders"]
-               else '<span class="v-partial">not on this page</span>')
-    login = '<span class="v-cannot">yes — needs sign-in</span>' if r["needs_login"] else "no"
-    meta = (f'<div class="card"><div class="kv">'
-            f'<div class=k>URL</div><div class="mono">{_e(target)}</div>'
-            f'<div class=k>page type</div><div>{_e(r["page_type"])}</div>'
-            f'<div class=k>tenders here?</div><div>{verdict} ({_e(r["tender_count"])} on page)</div>'
-            f'<div class=k>needs login</div><div>{login}</div>'
-            f'<div class=k>rendered with JS</div><div>{"yes" if r["rendered"] else "no"}</div>'
-            f'<div class=k>readable text</div><div>{_e(r["chars"])} characters</div>'
-            f'<div class=k>recommendation</div><div>{_e(r["recommendation"])}</div>'
-            f'</div></div>')
+        return _redir_sites(err=r["error"])
+    verdict = ('<span class="chip ok">yes</span>' if r["has_tenders"]
+               else '<span class="chip plain">not on this page</span>')
+    login = '<span class="chip warn">yes — needs sign-in</span>' if r["needs_login"] else "no"
+    meta = _kv([
+        ("URL", f'<span class="mono">{_e(target)}</span>'),
+        ("Page type", _e(r["page_type"])),
+        ("Tenders here?", f'{verdict} ({_e(r["tender_count"])} on page)'),
+        ("Needs login", login),
+        ("Rendered with JS", "yes" if r["rendered"] else "no"),
+        ("Readable text", f'{_e(r["chars"])} characters'),
+        ("Recommendation", _e(r["recommendation"])),
+    ])
     follow_html = ""
     if r["follow"]:
         items = ""
         for f in r["follow"]:
             fu = _e(f["url"])
             items += (
-                f'<div class="row" style="border-bottom:1px solid var(--line);padding:8px 0">'
-                f'<div style="flex:1;min-width:220px"><a href="{fu}" target="_blank">{_e(f["label"])}</a>'
-                f'<div class="mono mut" style="font-size:11px">{fu}</div></div>'
-                f'<form method=post action="/sites/preview" style="margin:0">'
-                f'<input type=hidden name=url value="{fu}"><button class="ghost">test</button></form>'
-                f'<form method=post action="/sites/analyze" style="margin:0">'
-                f'<input type=hidden name=url value="{fu}"><button class="ghost">analyze</button></form>'
-                f'<form method=post action="/sites/add" style="margin:0">'
+                '<div class="site-h" style="padding:9px 0;border-bottom:1px solid var(--line)">'
+                f'<div class="site-t"><a href="{fu}" target="_blank">{_e(f["label"])}</a>'
+                f'<span class="t-doc-n mono">{fu}</span></div>'
+                f'<form method=post action="/app/settings/sites/analyze" style="margin:0">'
+                f'<input type=hidden name=url value="{fu}">'
+                f'<button class="btn ghost sm">Analyse</button></form>'
+                f'<form method=post action="/app/settings/sites/add" style="margin:0">'
                 f'<input type=hidden name=kind value="tenders">'
                 f'<input type=hidden name=url value="{fu}">'
                 f'<input type=hidden name=label value="{_e(f["label"])}">'
-                f'<button>+ add as site</button></form></div>')
-        follow_html = (f'<h2>Where the tenders might be ({len(r["follow"])} links to follow)</h2>'
-                       f'<div class="card">{items}</div>'
-                       f'<p class="hint">These are candidate links the analyzer found. Test or '
-                       f'analyze one, and if it lists tenders, add it as a site.</p>')
+                f'<button class="btn sm">Add as site</button></form></div>')
+        follow_html = ('<div class="card"><div class="card-h"><h2>Where the tenders might be</h2>'
+                       f'<div class="spacer"></div><span class="chip num">{len(r["follow"])}</span>'
+                       f'</div><div class="card-b">{items}'
+                       '<div class="pref-help" style="margin-top:10px">Candidate links the '
+                       "analyser found. Analyse one, and if it lists tenders, add it as a site."
+                       "</div></div></div>")
     else:
-        follow_html = ('<p class="hint">No obvious "go here for tenders" links were found on this '
-                       'page. If the site needs a login or loads content via JavaScript, a simple '
-                       'crawler cannot reach it — use the site\'s API/RSS if it has one.</p>')
-    return _layout(request, "Site analysis", back + meta + follow_html)
+        follow_html = (f'<div class="note">{icon("info")}<span>No obvious "go here for tenders" '
+                       "links were found. If the site needs a login or loads via JavaScript, a "
+                       "simple crawler cannot reach it — use its API or RSS if it has one "
+                       "(the Find feed button on the site card checks for that).</span></div>")
+    return _page(request, "Site analysis", meta + '<div class="gap"></div>' + follow_html)
 
 
 _ENGINE_LABELS = {"builtin": "plain HTML", "crawl4ai": "crawl4ai (JS + markdown)"}
