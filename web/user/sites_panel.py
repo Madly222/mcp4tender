@@ -63,6 +63,12 @@ def _site_card(s, cs, ro):
         return f'<div class="catrow">{head}<div class="site-m">{"".join(meta)}</div></div>'
 
     controls = (
+        f'<form method="post" action="{A}/edit-url" class="site-row">'
+        f'<input type="hidden" name="id" value="{_e(sid)}">'
+        f'<label class="catl" style="margin:0">Link</label>'
+        f'<input class="note-in" type="text" name="url" value="{_e(url)}" '
+        f'placeholder="https://…" style="max-width:340px">'
+        '<button class="btn ghost sm">Save link</button></form>'
         f'<form method="post" action="{A}/settings" class="site-row">'
         f'<input type="hidden" name="id" value="{_e(sid)}">'
         f'<label class="catl" style="margin:0">Per batch</label>'

@@ -164,6 +164,23 @@ def _purge_tender_ids(conn, ids):
     conn.execute(f"DELETE FROM tenders WHERE id IN ({qs})", ids)
 
 
+def wipe_all(conn, forget=False):
+    ids = [r["id"] for r in conn.execute("SELECT id FROM tenders").fetchall()]
+    _purge_tender_ids(conn, ids)
+    conn.execute("DELETE FROM raw_documents")
+    for tbl in ("recheck_state", "tender_work"):
+        try:
+            conn.execute(f"DELETE FROM {tbl}")
+        except Exception:
+            pass
+    if forget:
+        conn.execute("DELETE FROM dismissed_tenders")
+    conn.execute("UPDATE crawl_state SET next_url=NULL, total_collected=0, "
+                 "exhausted=0, note=NULL")
+    conn.commit()
+    return len(ids)
+
+
 def dedupe_mtender(conn):
     import json as _json
     from workflows.collectors.mtender import base_ocid
