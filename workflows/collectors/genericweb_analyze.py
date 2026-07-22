@@ -157,3 +157,45 @@ def detect_site_profile(store, conn, url, auth=None):
         "steps": steps,
     }
     return profile
+
+
+def _summary(prof):
+    return {"engine": prof.get("engine", "builtin"), "render": bool(prof.get("render")),
+            "count": prof.get("count", 0), "estimate": prof.get("estimate"),
+            "needs_login": bool(prof.get("needs_login"))}
+
+
+def smart_detect(store, conn, url, auth=None, detect=None, analyze=None, preview=None,
+                 max_follow=4):
+    detect = detect or detect_site_profile
+    analyze = analyze or analyze_site
+    preview = preview or preview_site
+
+    prof = detect(store, conn, url, auth=auth)
+    best_url, best = url, _summary(prof)
+    tried = [url]
+
+    if best["count"] == 0 and not best["needs_login"]:
+        diag = analyze(store, conn, url, render=best["render"], auth=auth, engine=best["engine"])
+        for cand in (diag.get("follow") or [])[:max_follow]:
+            cu = cand.get("url")
+            if not cu or cu in tried:
+                continue
+            tried.append(cu)
+            cprof = detect(store, conn, cu, auth=auth)
+            if cprof.get("count", 0) > best["count"]:
+                best_url, best = cu, _summary(cprof)
+            if best["count"] > 0:
+                break
+
+    paginated = False
+    if best["count"] > 0:
+        pv = preview(store, conn, best_url, render=best["render"], engine=best["engine"], auth=auth)
+        nxt = pv.get("next")
+        if nxt:
+            pv2 = preview(store, conn, nxt, render=best["render"], engine=best["engine"], auth=auth)
+            paginated = (pv2.get("count") or 0) > 0
+
+    return {"url": best_url, "engine": best["engine"], "render": best["render"],
+            "count": best["count"], "estimate": best["estimate"],
+            "needs_login": best["needs_login"], "paginated": paginated, "tried": tried}

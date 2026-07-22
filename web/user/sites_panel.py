@@ -172,15 +172,14 @@ def sites_panel(store, request):
 
     add = ""
     if not ro:
-        add = (f'<form method="post" action="{A}/add" class="catrow">'
-               '<input type="hidden" name="kind" value="tenders">'
+        add = (f'<form method="post" action="{A}/detect" class="catrow">'
                '<div class="cat2">'
                '<div><label class="catl">Name</label>'
                '<input class="note-in" type="text" name="label" placeholder="Primaria Chisinau">'
                "</div>"
-               '<div><label class="catl">Tender list URL</label>'
+               '<div><label class="catl">Site or tender-list URL</label>'
                '<input class="note-in" type="text" name="url" '
-               'placeholder="https://site.md/achizitii"></div></div>'
+               'placeholder="https://site.md"></div></div>'
                '<div class="cat2">'
                '<div><label class="catl">Login (optional)</label>'
                '<input class="note-in" type="text" name="login"></div>'
@@ -189,7 +188,9 @@ def sites_panel(store, request):
                '<div class="site-row"><label class="catl" style="margin:0">Per batch</label>'
                '<input class="note-in" type="number" min="1" max="1000" name="batch_size" '
                'value="30" style="max-width:90px">'
-               '<button class="btn">Add site</button></div></form>')
+               '<button class="btn">Add site</button>'
+               '<span class="mut" style="margin-left:8px">Finds the tender list, checks '
+               'pagination and JS for you — just paste any page of the site.</span></div></form>')
 
     gw_acts = ""
     if not ro:

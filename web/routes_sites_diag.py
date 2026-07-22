@@ -163,11 +163,12 @@ def sites_detect(request: Request, label: str = Form(""), url: str = Form(""),
         return _redir_sites(err="web search is off (turn it on first)")
 
     from workflows.collectors import genericweb as _gw
-    from workflows.collectors.genericweb_analyze import detect_site_profile
+    from workflows.collectors.genericweb_analyze import smart_detect
 
     target = url.strip()
     auth = {"type": "basic", "user": login.strip(), "pass": password} if login.strip() else None
-    profile = detect_site_profile(store, conn, target, auth=auth)
+    profile = smart_detect(store, conn, target, auth=auth)
+    resolved = profile.get("url") or target
 
     lst = list(store.get("sites.tenders", []) or [])
     sid = uuid.uuid4().hex[:8]
@@ -175,7 +176,7 @@ def sites_detect(request: Request, label: str = Form(""), url: str = Form(""),
         step = max(1, min(1000, int(batch_size)))
     except (TypeError, ValueError):
         step = 30
-    entry = {"id": sid, "label": label.strip() or target, "url": target,
+    entry = {"id": sid, "label": label.strip() or resolved, "url": resolved,
              "enabled": not profile["needs_login"], "render": bool(profile["render"]),
              "engine": profile["engine"], "batch_size": step}
     lst.append(entry)
@@ -188,7 +189,7 @@ def sites_detect(request: Request, label: str = Form(""), url: str = Form(""),
         method += " + JS render"
     _gw._save_detected(conn, sid, profile["count"])
     est = profile.get("estimate")
-    if not est and profile["count"] > 0 and not profile.get("next"):
+    if not est and profile["count"] > 0 and not profile.get("paginated"):
         est = profile["count"]
     if est:
         _gw._save_estimate(conn, sid, est)
@@ -200,11 +201,16 @@ def sites_detect(request: Request, label: str = Form(""), url: str = Form(""),
                             err="this site needs a login the crawler could not satisfy — "
                                 "add credentials (HTTP Basic only), then enable it")
 
-    note = f"auto-detected: {method}, {profile['count']} tenders on test page"
+    pag = "paginated" if profile.get("paginated") else "single page"
+    note = f"auto-detected: {method}, {profile['count']} tenders on test page, {pag}"
     if est:
         note += f" (est. {est} total)"
+    if resolved != target:
+        note += f" — using tender list {resolved}"
     _gw._save_note(conn, sid, note)
     msg = f"added '{entry['label']}' — {method}, {profile['count']} tenders found"
+    if resolved != target:
+        msg += " (found the tender list automatically)"
     if est:
         msg += f", ~{est} total"
     return _redir_sites(msg=msg)
