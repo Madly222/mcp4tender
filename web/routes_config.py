@@ -18,7 +18,7 @@ router = APIRouter()
 def config_list(request: Request, msg: str = "", err: str = ""):
     store = request.state.store
     ro = request.state.readonly
-    items = sorted(store.all().items())
+    items = [(k, v) for k, v in sorted(store.all().items()) if k != "sources.rank"]
     banner = ""
     if msg:
         banner += f'<div class="ok">{_e(msg)}</div>'
