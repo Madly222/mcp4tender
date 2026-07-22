@@ -56,15 +56,20 @@ def _keep(row, q, match):
     return True
 
 
-def _filters(q, match):
+def _filters(q, match, sort="new"):
     opts = "".join(
         f'<option value="{k}"{" selected" if k == match else ""}>{_e(v)}</option>'
         for k, v in MATCH_FILTERS.items())
+    sorts = {"new": "Newest", "deadline": "By deadline"}
+    sopts = "".join(
+        f'<option value="{k}"{" selected" if k == sort else ""}>{_e(v)}</option>'
+        for k, v in sorts.items())
     return ('<form method="get" action="/app/inbox" class="filters">'
             f'<div class="fh">{icon("filter")}Filters</div><div class="fb">'
             f'<input class="grow" type="text" name="q" value="{_e(q)}" '
             'placeholder="Title, buyer or CPV code">'
             f'<select name="match">{opts}</select>'
+            f'<select name="sort">{sopts}</select>'
             '<button class="btn">Apply</button>'
             '<a class="btn ghost" href="/app/inbox">Clear</a>'
             "</div></form>")
@@ -97,7 +102,7 @@ def inbox_sweep(request: Request):
 
 
 @router.get("/app/inbox")
-def inbox(request: Request, q: str = "", match: str = "", swept: str = ""):
+def inbox(request: Request, q: str = "", match: str = "", swept: str = "", sort: str = "new"):
     conn, store = request.state.conn, request.state.store
     acct_id = work.account_id(request)
     portal = cards.portal_of(store)
@@ -107,6 +112,11 @@ def inbox(request: Request, q: str = "", match: str = "", swept: str = ""):
     fresh, closed_ids, _waiting = lifecycle.split(buckets["new"], store, decided)
     hidden = len(closed_ids)
     shown = [(r, st) for r, st in fresh if _keep(r, q, match)]
+    if sort == "deadline":
+        def _dl_key(item):
+            ts = cards.deadline_ts(item[0], cards.nj_of(item[0]))
+            return (ts is None, ts or 0)
+        shown = sorted(shown, key=_dl_key)
     now = time.time()
 
     if shown:
@@ -148,7 +158,10 @@ def inbox(request: Request, q: str = "", match: str = "", swept: str = ""):
                 '<button class="btn ghost sm">Skip them for good</button></form>')
 
     counts = nav_counts(conn, store, acct_id)
-    lede = ("New finds from the daily check, newest first. Only tenders you can still bid on "
+    lede = ("Soonest deadline first; tenders with no deadline (N/A) are listed last. "
+            "Only tenders you can still bid on are shown."
+            if sort == "deadline" else
+            "New finds from the daily check, newest first. Only tenders you can still bid on "
             "are listed. Keep what is worth a bid — kept tenders move to Qualified.")
-    return render(request, "Tender inbox", _filters(q, match) + note + table,
+    return render(request, "Tender inbox", _filters(q, match, sort) + note + table,
                   heading="Tender inbox", heading_icon="inbox", lede=lede, counts=counts)

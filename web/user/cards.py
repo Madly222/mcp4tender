@@ -76,11 +76,16 @@ def _left(raw, now):
 def cell_when(row, nj, now):
     raw, estimated = deadline_of(row, nj)
     if not raw:
-        return f'<td class="t-when"><b>{DASH}</b></td>'
+        return f'<td class="t-when"><b>N/A</b></td>'
     pretty = humanize(raw) or str(raw)
     est = '<div style="margin-top:5px"><span class="chip plain">estimated</span></div>' \
         if estimated else ""
     return f'<td class="t-when"><b class="num">{_e(pretty)}</b>{_left(raw, now)}{est}</td>'
+
+
+def deadline_ts(row, nj):
+    raw, _est = deadline_of(row, nj)
+    return day_end_ts(raw) if raw else None
 
 
 def cell_ref(row, nj=None):
