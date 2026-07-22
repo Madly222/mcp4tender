@@ -114,6 +114,17 @@ def sites_settings(request: Request, id: str = Form(...), batch_size: str = Form
     store.set("sites.tenders", lst, actor="web", note="set batch via web")
     return _redir_sites(msg=f"batch set: {n} tenders")
 
+@router.post("/app/settings/sites/rank")
+def sites_rank(request: Request, token: str = Form(...), dir: str = Form("up")):
+    if request.state.readonly:
+        return _redir_sites(err="read-only mode")
+    from web.source_rank import move
+    store = request.state.store
+    order = move(store, token.strip(), "up" if dir != "down" else "down")
+    store.set("sources.rank", order, actor="web", note="reorder source strength via web")
+    return _redir_sites(msg="source strength updated")
+
+
 @router.post("/app/settings/sites/edit-url")
 def sites_edit_url(request: Request, id: str = Form(...), url: str = Form(""),
                    label: str = Form("")):

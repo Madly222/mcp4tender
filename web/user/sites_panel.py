@@ -130,6 +130,31 @@ def _mtender_card(store, conn, ro):
             f'{acts}</div></div>')
 
 
+def _rank_card(store, ro):
+    from web.source_rank import sources_in_order
+    order = sources_in_order(store)
+    n = len(order)
+    rows = ""
+    for i, (tok, label, kind) in enumerate(order):
+        up = "" if (ro or i == 0) else _mini("rank", {"token": tok, "dir": "up"}, "↑",
+                                             "make stronger")
+        dn = "" if (ro or i == n - 1) else _mini("rank", {"token": tok, "dir": "down"}, "↓",
+                                                 "make weaker")
+        badge = "API" if kind == "api" else "site"
+        rows += (f'<div class="site-h" style="padding:8px 0;border-bottom:1px solid var(--line)">'
+                 f'<span class="chip num">{i + 1}</span>'
+                 f'<div class="site-t"><b>{_e(label)}</b></div>'
+                 f'<span class="chip plain">{badge}</span>{up}{dn}</div>')
+    return ('<div class="card"><div class="card-h">'
+            f'{icon("search")}<h2>Source strength</h2></div>'
+            '<div class="card-b">'
+            '<p class="mut" style="margin:0 0 12px;line-height:1.6">Higher = stronger. When the '
+            'same tender (same name and buyer) turns up on several sources, the copy from the '
+            'strongest source wins and weaker ones cannot overwrite it. Move a source up to give '
+            'it priority.</p>'
+            f'{rows}</div></div>')
+
+
 def sites_panel(store, request):
     conn = request.state.conn
     ro = bool(store.get("web.read_only"))
@@ -214,5 +239,6 @@ def sites_panel(store, request):
             'reference. These are not scanned for tenders.</p>'
             f'{prows or "<div class=empty>None yet.</div>"}{padd}</div></div>')
 
-    return (_mtender_card(store, conn, ro) + '<div class="gap"></div>' + web
+    return (_mtender_card(store, conn, ro) + '<div class="gap"></div>'
+            + _rank_card(store, ro) + '<div class="gap"></div>' + web
             + '<div class="gap"></div>' + part)
