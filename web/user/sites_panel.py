@@ -50,6 +50,8 @@ def _site_card(s, cs, ro):
         meta.append(f'<div class="pref-help" style="margin:0">{_e(cs["note"])}</div>')
     if s.get("engine"):
         meta.append(f'<span class="chip plain">engine: {_e(s["engine"])}</span>')
+    if s.get("render"):
+        meta.append('<span class="chip plain">JS render (auto)</span>')
     has_auth = bool(cs and cs["auth_json"])
 
     head = (f'<div class="site-h"><div class="site-t">'
@@ -65,10 +67,12 @@ def _site_card(s, cs, ro):
     controls = (
         f'<form method="post" action="{A}/edit-url" class="site-row">'
         f'<input type="hidden" name="id" value="{_e(sid)}">'
-        f'<label class="catl" style="margin:0">Link</label>'
+        f'<label class="catl" style="margin:0">Name &amp; link</label>'
+        f'<input class="note-in" type="text" name="label" value="{_e(s.get("label") or "")}" '
+        f'placeholder="name" style="max-width:170px">'
         f'<input class="note-in" type="text" name="url" value="{_e(url)}" '
-        f'placeholder="https://…" style="max-width:340px">'
-        '<button class="btn ghost sm">Save link</button></form>'
+        f'placeholder="https://…" style="max-width:300px">'
+        '<button class="btn ghost sm">Save</button></form>'
         f'<form method="post" action="{A}/settings" class="site-row">'
         f'<input type="hidden" name="id" value="{_e(sid)}">'
         f'<label class="catl" style="margin:0">Per batch</label>'
@@ -91,8 +95,6 @@ def _site_card(s, cs, ro):
               "look for an RSS feed, a WordPress API or a sitemap on this site"),
         _mini("preview", {"id": sid}, "Test", "fetch this page now and show what is found"),
         _mini("analyze", {"id": sid}, "Analyse", "profile this site: are there tenders, how to reach them"),
-        _mini("render-toggle", {"id": sid}, f'JS: {"on" if s.get("render") else "off"}',
-              "render with a headless browser (for JavaScript sites)"),
         _mini("reset-cursor", {"id": sid}, "Reset", "start crawling this site from the beginning",
               confirm="Reset crawl position to the start?"),
         _mini("toggle", {"id": sid}, "Off" if on else "On", "stop or resume scanning this site"),
