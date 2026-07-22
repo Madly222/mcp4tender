@@ -97,7 +97,7 @@ def test_lists_link_to_the_detail_page(tmp_path, monkeypatch):
     for page in ("/app/inbox", "/app/search"):
         h = c.get(page).text
         assert f'href="/app/tender/{tid}"' in h, page
-        assert ">portal</a>" in h, page
+        assert ">Link</a>" in h, page
 def test_read_only_blocks_the_detail_save(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"t6.db")

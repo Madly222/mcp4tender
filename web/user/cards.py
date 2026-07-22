@@ -103,7 +103,9 @@ def cell_tender(row, nj, portal=None, extra=""):
     if extra:
         tags.append(extra)
     if url:
-        tags.append(f'<a class="chip plain" href="{_e(url)}" target=_blank>portal</a>')
+        tags.append(f'<a class="chip" style="background:var(--ok-weak);'
+                    f'border-color:var(--ok-line);color:var(--ok)" '
+                    f'href="{_e(url)}" target=_blank>Link</a>')
     cpv = nj.get("cpv") or []
     if isinstance(cpv, list) and cpv and isinstance(cpv[0], dict):
         txt = " ".join(str(x) for x in (cpv[0].get("id"), cpv[0].get("description")) if x)
