@@ -496,6 +496,14 @@ def cmd_dedupe_docs(conn, store, args):
     return 0
 
 
+def cmd_recheck(conn, store, args):
+    from workflows.recheck import run_recheck
+    limit = getattr(args, "limit", None) or 200
+    stats = run_recheck(store, conn, limit=limit, logger=_log)
+    print(f"recheck: {stats}")
+    return 0
+
+
 def main():
     p = argparse.ArgumentParser(description="tender engine")
     sub = p.add_subparsers(dest="command")
@@ -534,6 +542,8 @@ def main():
     pdg.add_argument("--limit", type=int, default=None)
     pdd = sub.add_parser("dedupe-docs")
     pdd.add_argument("--source", default="mtender")
+    prc = sub.add_parser("recheck")
+    prc.add_argument("--limit", type=int, default=None)
     pu = sub.add_parser("user")
     pu.add_argument("action",
                     choices=["add", "list", "passwd", "delete", "disable", "enable", "role"])
@@ -562,6 +572,7 @@ def main():
                "extract": cmd_extract, "applicability": cmd_applicability,
                "suppliers": cmd_suppliers, "supervise": cmd_supervise,
                "digest": cmd_digest, "dedupe-docs": cmd_dedupe_docs,
+               "recheck": cmd_recheck,
                "user": cmd_user}.get(args.command, cmd_demo)
     sys.exit(handler(conn, store, args))
 
