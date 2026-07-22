@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 
 from fastapi import APIRouter, Request
+from fastapi.responses import RedirectResponse
 
 from engine.dateparse import day_end_ts, humanize
 from web.render import _e
@@ -73,7 +74,9 @@ def _strips(openrows, waiting, now):
         out.append('<div class="strip warn">'
                    f'<div class="ic">{icon("bang", 3)}</div>'
                    f'<div class="tx"><b>{waiting} tenders not scored yet</b>'
-                   '<span>Collected, but the analysis has not reached them</span></div></div>')
+                   '<span>Collected, but the analysis has not reached them</span></div>'
+                   '<form method="post" action="/app/analyze-now" style="margin:0">'
+                   '<button class="btn sm">Analyze now</button></form></div>')
     return f'<div class="strips">{"".join(out)}</div>' if out else ""
 
 
@@ -133,7 +136,7 @@ def _next_steps(inbox_n):
 
 
 @router.get("/app")
-def app_home(request: Request):
+def app_home(request: Request, msg: str = "", err: str = ""):
     conn, store = request.state.conn, request.state.store
     acct_id = work.account_id(request)
     now = time.time()
@@ -145,10 +148,64 @@ def app_home(request: Request):
     waiting = funnel_counts(conn)["new"]
     lede = (f"{inbox_n} tender{'s' if inbox_n != 1 else ''} waiting for your call"
             if inbox_n else "Inbox is clear — nothing new to decide.")
-    body = (_kpis(inbox_n, w, closing, waiting)
+    banner = ""
+    if msg:
+        banner += f'<div class="ok">{_e(msg)}</div>'
+    if err:
+        banner += f'<div class="err">{_e(err)}</div>'
+    body = (banner + _kpis(inbox_n, w, closing, waiting)
             + _strips(openrows, waiting, now)
             + '<div class="two">' + _open_table(openrows, now)
             + '<div>' + _next_steps(inbox_n) + '<div class="gap"></div>'
             + _soon(openrows, now) + '</div></div>')
     return render(request, "Dashboard", body, heading="Today at a glance", lede=lede,
                   counts=counts)
+
+
+@router.post("/app/analyze-now")
+def analyze_now(request: Request):
+    from urllib.parse import quote
+    if request.state.readonly:
+        return RedirectResponse("/app?err=" + quote("read-only mode"), status_code=303)
+    conn, store = request.state.conn, request.state.store
+    if not funnel_counts(conn)["new"]:
+        return RedirectResponse(
+            "/app?msg=" + quote("Nothing waiting — everything collected is already scored."),
+            status_code=303)
+
+    from engine import LLMGateway
+    gw = LLMGateway(store, conn)
+    if gw.expects_real_but_stub():
+        return RedirectResponse(
+            "/app?err=" + quote("No working API key — analysis would produce placeholder data, "
+                                "not real results. Add or fix your key in Settings → AI, then try "
+                                "again."), status_code=303)
+    try:
+        gw.complete("triage", "Reply with the single word ok.",
+                    [{"role": "user", "content": "ping"}], max_tokens=5)
+    except Exception as exc:
+        return RedirectResponse(
+            "/app?err=" + quote(f"Your API key isn't working: {str(exc)[:220]}. Check the key, "
+                                "its balance and rate limits in Settings → AI."), status_code=303)
+
+    from workflows.analysis import run_all
+    limit = 25
+    try:
+        res = run_all(store, conn, limit=limit, scope="all")
+    except Exception as exc:
+        return RedirectResponse("/app?err=" + quote(f"Analysis failed: {str(exc)[:240]}"),
+                                status_code=303)
+    done = sum((v or {}).get("done", 0) for v in res.values())
+    failed = sum((v or {}).get("failed", 0) for v in res.values())
+    left = funnel_counts(conn)["new"]
+    if failed and not done:
+        return RedirectResponse(
+            "/app?err=" + quote(f"Reached tenders but all {failed} failed to analyse — usually an "
+                                "API-key problem (spent balance or rate limit). Check Settings → "
+                                "AI."), status_code=303)
+    triaged = (res.get("triage") or {}).get("done", 0)
+    scored = (res.get("applicability") or {}).get("done", 0)
+    msg = (f"Analysed a batch — {triaged} triaged, {scored} scored"
+           + (f"; {left} still waiting, click again for the next batch." if left
+              else "; all caught up."))
+    return RedirectResponse("/app?msg=" + quote(msg), status_code=303)

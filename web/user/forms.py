@@ -12,7 +12,7 @@ HANDLED = {
     "ai": (),
     "schedule": ("schedule.jobs", "schedule.timezone"),
     "suppliers": ("suppliers.catalog",),
-    "sources": ("sites.tenders", "sites.partners"),
+    "sources": ("sites.tenders", "sites.partners", "sources.rank"),
 }
 
 
