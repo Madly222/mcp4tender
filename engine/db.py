@@ -323,6 +323,9 @@ def _migrate(conn):
         conn.execute("ALTER TABLE tenders ADD COLUMN dedup_key TEXT")
         conn.execute("CREATE INDEX IF NOT EXISTS idx_tenders_dedup ON tenders(dedup_key)")
         conn.commit()
+    conn.execute("CREATE TABLE IF NOT EXISTS recheck_state("
+                 "tender_id INTEGER PRIMARY KEY, content_hash TEXT, checked_at INTEGER)")
+    conn.commit()
     if not _column_exists(conn, "accounts", "role"):
         conn.execute("ALTER TABLE accounts ADD COLUMN role TEXT")
         conn.execute("UPDATE accounts SET role='admin' WHERE role IS NULL")
