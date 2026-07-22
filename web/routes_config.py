@@ -37,6 +37,18 @@ def config_list(request: Request, msg: str = "", err: str = ""):
             '<span class="mut">Needed after deploying new code (a new archive). '
             'Editing settings here applies instantly and needs no restart.</span>'
             '</div></div>')
+    if not ro:
+        n = request.state.conn.execute("SELECT COUNT(*) c FROM tenders").fetchone()["c"]
+        banner += (
+            '<div class="card"><div class="row">'
+            '<form method=post action="/admin/wipe-all" style="margin:0" '
+            'onsubmit="return confirm(\'Delete ALL collected tenders and their analysis, '
+            'and reset every crawl position? This cannot be undone.\')">'
+            '<button class="ghost danger">⌫ Wipe all tenders</button></form>'
+            f'<span class="mut">Empties the tender base ({n} now) across every source and '
+            'resets crawl cursors, so the next run collects from scratch. Sites, settings '
+            'and your keywords are kept.</span>'
+            '</div></div>')
     rows = []
     for key, value in items:
         vtype = _vtype(value)
@@ -164,6 +176,17 @@ def config_rollback(request: Request, key: str = Form(...), version: int = Form(
         return RedirectResponse(f"/config/item?key={quote(key)}&err={quote(str(ex))}",
                                 status_code=303)
     return RedirectResponse(f"/config/item?key={quote(key)}&saved=1", status_code=303)
+
+
+@router.post("/admin/wipe-all")
+def admin_wipe_all(request: Request):
+    from urllib.parse import quote
+    if request.state.readonly:
+        return RedirectResponse("/config?err=" + quote("read-only mode"), status_code=303)
+    from workflows.analysis import wipe_all
+    n = wipe_all(request.state.conn)
+    return RedirectResponse(
+        "/config?msg=" + quote(f"wiped {n} tender(s); crawl cursors reset"), status_code=303)
 
 
 @router.post("/admin/restart")

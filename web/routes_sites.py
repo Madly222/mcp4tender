@@ -114,6 +114,29 @@ def sites_settings(request: Request, id: str = Form(...), batch_size: str = Form
     store.set("sites.tenders", lst, actor="web", note="set batch via web")
     return _redir_sites(msg=f"batch set: {n} tenders")
 
+@router.post("/app/settings/sites/edit-url")
+def sites_edit_url(request: Request, id: str = Form(...), url: str = Form(""),
+                   label: str = Form("")):
+    if request.state.readonly:
+        return _redir_sites(err="read-only mode")
+    ok, err = _validate_url(url)
+    if not ok:
+        return _redir_sites(err=err)
+    store = request.state.store
+    lst = list(store.get("sites.tenders", []) or [])
+    found = False
+    for s in lst:
+        if s.get("id") == id:
+            s["url"] = url.strip()
+            if label.strip():
+                s["label"] = label.strip()
+            found = True
+    if not found:
+        return _redir_sites(err="site not found")
+    store.set("sites.tenders", lst, actor="web", note="edit site url via web")
+    return _redir_sites(msg="link updated")
+
+
 @router.post("/app/settings/sites/auth")
 def sites_auth(request: Request, id: str = Form(...), login: str = Form(""),
                password: str = Form("")):
