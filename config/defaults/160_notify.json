@@ -7,5 +7,13 @@
   "notify.email.from": "",
   "notify.email.to": "",
   "notify.telegram.enabled": false,
-  "notify.telegram.chat_id": ""
+  "notify.telegram.chat_id": "",
+  "notify.message.block_text": true,
+  "notify.message.block_analysis": true,
+  "notify.text.buyer": true,
+  "notify.text.value": true,
+  "notify.text.deadline": true,
+  "notify.text.verdict": true,
+  "notify.text.rating": true,
+  "notify.text.link": true
 }
