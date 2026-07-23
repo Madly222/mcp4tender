@@ -272,6 +272,45 @@ def save_table(form, store, key, cols, actor="web"):
     return f"saved {len(out)} row(s) in {key}"
 
 
+def save_notify_channels(form, store, actor="web"):
+    from engine.secrets import write_env_var
+    from workflows.notify import SMTP_PASSWORD_VAR, TG_TOKEN_VAR
+    port = int(numval(form.get("email_port"), 587))
+    if not (0 < port < 65536):
+        raise SettingsError("that port number cannot be right")
+    tok = (form.get("tg_token") or "").strip()
+    if tok and ":" not in tok:
+        raise SettingsError("that does not look like a bot token (expected 123456:ABC-DEF...)")
+    store.set("notify.email.enabled", form.get("email_enabled") is not None, actor=actor)
+    store.set("notify.email.host", (form.get("email_host") or "").strip(), actor=actor)
+    store.set("notify.email.port", port, actor=actor)
+    store.set("notify.email.tls", form.get("email_tls") is not None, actor=actor)
+    store.set("notify.email.login", (form.get("email_login") or "").strip(), actor=actor)
+    store.set("notify.email.from", (form.get("email_from") or "").strip(), actor=actor)
+    store.set("notify.email.to", (form.get("email_to") or "").strip(), actor=actor)
+    store.set("notify.telegram.enabled", form.get("tg_enabled") is not None, actor=actor)
+    store.set("notify.telegram.chat_id", (form.get("tg_chat_id") or "").strip(), actor=actor)
+    smtp = (form.get("smtp_password") or "").strip()
+    if smtp:
+        write_env_var(SMTP_PASSWORD_VAR, smtp)
+    if tok:
+        write_env_var(TG_TOKEN_VAR, tok)
+    return "sending settings"
+
+
+def save_message(form, store, actor="web"):
+    for name, key in (("block_text", "notify.message.block_text"),
+                      ("block_analysis", "notify.message.block_analysis"),
+                      ("text_buyer", "notify.text.buyer"),
+                      ("text_value", "notify.text.value"),
+                      ("text_deadline", "notify.text.deadline"),
+                      ("text_verdict", "notify.text.verdict"),
+                      ("text_rating", "notify.text.rating"),
+                      ("text_link", "notify.text.link")):
+        store.set(key, form.get(name) is not None, actor=actor)
+    return "message layout"
+
+
 def save_notify_secrets(form):
     from engine.secrets import write_env_var
     from workflows.notify import SMTP_PASSWORD_VAR, TG_TOKEN_VAR
