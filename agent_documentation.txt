@@ -222,6 +222,10 @@ HARD-WON DECISIONS — DO NOT UNDO
   balanced (strict re-ran worker+controller on any flag — on applicability that's an extra
   sonnet). Recheck hashes text not raw HTML and skips dead tenders. Incremental page-1 hash gate.
   Analyze-now pings via health.check_api_key, not the cache-answered gw.complete.
+- VERIFY RETRY HINTS: the controller's missing/issues lists MAY contain dicts, not just strings
+  (live crash Jul 23: `sequence item N: expected str instance, dict found` across a whole batch of
+  applicability_verify). Always build hint text via workflows/verify.hint_items — never a bare
+  "; ".join over model-returned lists, here or in any new stage.
 - EMAIL: Date + Message-ID always (UBE rejection was live). Multi-recipient = comma list in
   notify.email.to.
 - MULTI-COMPANY IS SOLVED BY DEPLOYMENT, NOT SCHEMA: one instance per company = data dir + .env +
@@ -270,6 +274,12 @@ TODO (priority order, agreed with Victor)
 8. Scheduler refinements: per-site cadence; auto-heal (N empty incremental runs on a previously
    producing site -> re-run detect_site_profile). Feed-walking collector branch (feed_url is
    stored, unused). Gate the site Analyse button on a per-site "ready" flag (Victor's ask).
-9. Decide verify controller model (haiku vs sonnet) and applicability cost (sonnet dominates
+9. ERROR NORMALIZATION (Victor, Jul 23): every raw error surfaced to the user must be translated
+   into plain human language. engine/alerts.friendly is the one translation point — extend its
+   mapping whenever a new cryptic error shows up in /app/alerts (each hint says what happened and
+   what to do); the raw text stays visible below for support. Longer term: run stage_runs error
+   strings through friendly() everywhere they render, and add mappings for the common Python/
+   sqlite/network classes, not only Anthropic API codes.
+10. Decide verify controller model (haiku vs sonnet) and applicability cost (sonnet dominates
    spend) using /app/costs data. Battle-test segments + recheck on a week of real scheduled runs.
-10. Verify Crawl4AI on the server (may need a 1-line _crawl tweak per installed version).
+11. Verify Crawl4AI on the server (may need a 1-line _crawl tweak per installed version).

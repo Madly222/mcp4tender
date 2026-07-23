@@ -200,8 +200,8 @@ class ApplicabilityVerifyStage(Stage):
 
         while action == "retry" and retries < max_retries:
             retries += 1
-            hint = "Reanalizează ținând cont de: " + "; ".join(
-                (result.get("missing") or []) + (result.get("issues") or []))
+            from workflows.verify import hint_items
+            hint = "Reanalizează ținând cont de: " + hint_items(result)
             out = produce_applicability(tender, extraction, bucket, gw, ctx.config, hint=hint)
             total_cost += out.get("cost", 0)
             total_tokens += out.get("tokens", 0)

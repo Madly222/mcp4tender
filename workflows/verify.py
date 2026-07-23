@@ -31,6 +31,18 @@ def verify_against_source(gateway, config, source_text, produced, prompt, model_
             "tokens": r["input_tokens"] + r["output_tokens"], "model": r["model"]}
 
 
+def hint_items(result):
+    out = []
+    for item in (result.get("missing") or []) + (result.get("issues") or []):
+        if isinstance(item, str):
+            out.append(item)
+        elif isinstance(item, dict):
+            out.append(" ".join(str(v) for v in item.values() if v not in (None, "")))
+        elif item not in (None, ""):
+            out.append(str(item))
+    return "; ".join(x for x in out if x)
+
+
 def decide_action(verify_result, strictness, flag_confidence_threshold=0.6):
     has_missing = bool(verify_result.get("missing"))
     raw_issues = bool(verify_result.get("issues")) or verify_result.get("status") == "issues"
@@ -100,8 +112,7 @@ class ExtractVerifyStage(Stage):
         action = decide_action(result, strictness, threshold)
         while action == "retry" and retries < max_retries:
             retries += 1
-            hint = "Completează/corectează: " + "; ".join(
-                (result.get("missing") or []) + (result.get("issues") or []))
+            hint = "Completează/corectează: " + hint_items(result)
             out = produce_extraction(tender, gw, ctx.config, hint=hint)
             total_cost += out.get("cost", 0)
             total_tokens += out.get("tokens", 0)
