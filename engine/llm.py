@@ -88,10 +88,15 @@ class LLMGateway:
                 "WHERE cache_key = ?", (key,)).fetchone()
             if row:
                 data = json.loads(row["response_json"])
-                return {"text": data["text"], "model": model,
-                        "input_tokens": row["input_tokens"],
-                        "output_tokens": row["output_tokens"],
-                        "cost": 0.0, "cached": True, "provider": self.provider.name}
+                if str(data.get("text", "")).startswith("STUB_RESPONSE:") \
+                        and self.provider.name != "stub":
+                    self.conn.execute("DELETE FROM llm_cache WHERE cache_key = ?", (key,))
+                    self.conn.commit()
+                else:
+                    return {"text": data["text"], "model": model,
+                            "input_tokens": row["input_tokens"],
+                            "output_tokens": row["output_tokens"],
+                            "cost": 0.0, "cached": True, "provider": self.provider.name}
 
         call_messages = messages
         if prefill:
@@ -114,7 +119,7 @@ class LLMGateway:
             text = prefill + text
         cost = self._price(model, out["input_tokens"], out["output_tokens"])
 
-        if cache_on:
+        if cache_on and self.provider.name != "stub":
             self.conn.execute(
                 "INSERT OR REPLACE INTO llm_cache(cache_key, model, response_json, "
                 "input_tokens, output_tokens, created_at) VALUES(?,?,?,?,?,?)",

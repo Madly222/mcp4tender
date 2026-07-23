@@ -180,12 +180,13 @@ def analyze_now(request: Request):
             "/app?err=" + quote("No working API key — analysis would produce placeholder data, "
                                 "not real results. Add or fix your key in Settings → AI, then try "
                                 "again."), status_code=303)
-    try:
-        gw.complete("triage", "Reply with the single word ok.",
-                    [{"role": "user", "content": "ping"}], max_tokens=5)
-    except Exception as exc:
+    from engine.health import check_api_key
+    chk = {"status": "ok"} if gw.provider.name != "anthropic" \
+        else check_api_key(model=gw.model_for("triage"))
+    if chk.get("status") != "ok":
+        detail = str(chk.get("detail") or chk.get("code") or "unknown error")[:220]
         return RedirectResponse(
-            "/app?err=" + quote(f"Your API key isn't working: {str(exc)[:220]}. Check the key, "
+            "/app?err=" + quote(f"Your API key isn't working: {detail}. Check the key, "
                                 "its balance and rate limits in Settings → AI."), status_code=303)
 
     from workflows.analysis import run_all

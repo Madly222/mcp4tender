@@ -3,28 +3,26 @@ TENDERENGINE — MAINTENANCE MAP (for AI handoff)
 B2G tender-monitoring platform for SC Rapid Link SRL (Moldova). Python 3.10, FastAPI + SQLite,
 Ubuntu 22.04, venv at ~/tenderengine/.venv, no Docker. User: Victor (speaks Russian; UI is English).
 
-LATEST STATE (2026-07-21)
+LATEST STATE (2026-07-23)
 -------------------------
-544 tests pass (pytest -q --ignore=tests/test_phase4b.py). The whole user zone at /app is built:
+596 tests pass (pytest -q --ignore=tests/test_phase4b.py). The whole user zone at /app is built:
 inbox, qualified, tender detail, search, archive, preferences (theme), and Company settings with
 EVERY setting as a human form (no raw JSON anywhere). Sites live at /app/settings/sources. Inbox
 has the lifecycle filter (open/closed/pending/awarded), a "Not open yet" page, the age-out bug is
-fixed (see [18g]), and the site Analyse/Test 500 is fixed (see [18i]).
+fixed (see [18g]), and the site Analyse/Test 500 is fixed (see [18i] — pushed, in main).
+SOURCE RANK + CROSS-SOURCE DEDUP are built ([21]), the tender RE-CHECK loop is built ([22]),
+and a TOKEN-LEAK pass landed (see [23]) fixing stub-cache poisoning, the cached key ping on
+Analyze-now, wasted recheck calls, and adding a front-page hash gate to incremental collection.
 
-  !! PENDING PUSH: the Analyse/Test fix (files in [18i]: genericweb_analyze.py, routes_sites_diag.py,
-     tests/test_site_analyze.py, tests/test_sites.py) was delivered as a tar but may not be pushed
-     yet. main was last seen at commit b96c883 WITHOUT it. FIRST THING in a new chat: clone fresh
-     and check whether [18i] is in the tree; if grep for "AI analysis failed" in
-     workflows/collectors/genericweb_analyze.py is empty, it is not pushed - ask Victor.
-
-  ACHIZITII = MTENDER, CONFIRMED (2026-07-21): achizitii.md and MTender are the SAME procurement
-  system, two front-ends. Proven live: tender "Compresor de aer de inalta presiune (repetat)",
-  same buyer, same 250000 MDL, appeared TWICE in the inbox - once via genericweb (scraped
-  achizitii, ref 9c6f99c6...) and once via mtender API (ref ocds-b3wdp1-MD-...), with DIFFERENT
-  deadlines (27.07 vs 30.07) and the mtender copy richer (has CPV, portal link). So scraping
-  achizitii is pure waste + duplicates + desync. DECISION PENDING with Victor: remove achizitii
-  from sites.tenders, and optionally add its host to genericweb.API_COVERED_HOSTS (see [18e]) so it
-  can never be scraped again. Do NOT treat achizitii as a real second source.
+  ACHIZITII vs MTENDER — DECISION REVERSED (Jul 2026, supersedes the 2026-07-21 note): achizitii.md
+  and MTender are two front-ends of the same procurement system, BUT Victor's colleagues judge
+  achizitii the best source for DATA quality, completeness and live tender updates, so achizitii is
+  now ranked source #1 and IS scraped; the MTender OCDS API stays enabled as a lower-rank
+  coverage/fallback source. Duplicates are collapsed by the cross-source dedup ([21]): same
+  normalized title+buyer = same tender; a higher-or-equal-rank source may overwrite the stored
+  copy, a lower-rank one may not. Do NOT add achizitii to genericweb.API_COVERED_HOSTS and do NOT
+  remove it from sites.tenders — that was the OLD plan and it is cancelled. The token cost of
+  scraping achizitii is an accepted trade for data quality.
 
 Next chat's main job: the keep -> ... -> partners journey, item (16b) in the roadmap. When the user
 hits the green check in the inbox today, it ONLY sets tender_work.stage="qualified" - no analysis
@@ -868,6 +866,70 @@ COMPONENT MAP
     If a redesign wants JS/templates/static assets, that is a STRUCTURAL change (new /static mount or a
       template engine) — decide it explicitly with Victor first; it is not the current shape of the codebase.
     SEND: web/styles.py + web/render.py (always), plus the routes_*.py of the page being restyled.
+
+[21] SOURCE RANK + CROSS-SOURCE DEDUP (was undocumented — engine/dedup.py, web/source_rank.py)
+    Purpose: the same tender often exists on several sources (achizitii scrape + MTender API).
+    Sources are ranked; the stored copy belongs to the strongest source that has seen it.
+    Files: engine/dedup.py -> dedup_key(title,buyer) (diacritic-folded, exact normalized match —
+      fuzzy matching deliberately deferred); token_of(source,external_id) (genericweb -> the
+      site_id prefix of external_id, others -> the source name); rank_of(store,source,ext) = index
+      in config sources.rank (lower index = stronger; unranked = weakest); carry_closed(incoming,
+      stored) preserves awarded/status/status_details from the stored copy so a scrape can never
+      "reopen" a tender the API already closed.
+    web/source_rank.py -> sources_in_order(store) (rank list + unranked rest, labelled from
+      sites.tenders + MTender), move(store,token,up|down) for the reorder buttons on
+      /app/settings/sources. sources.rank is hidden from the generated settings rows
+      (routes_config filters it) — the reorder UI is the only editor.
+    Enforcement lives in engine/collectors._store_item: on INSERT of an unseen external_id with a
+    dedup_key that matches an existing row from a DIFFERENT token, the incoming wins only if
+    rank_of(incoming) < rank_of(stored) (it then UPDATEs the stored row in place — same tenders.id,
+    so verdicts/extractions/tender_work stay attached — with status="updated"); otherwise the
+    incoming copy is dropped. Tests: tests/test_cross_dedup.py, tests/test_source_rank.py.
+    SEND: engine/dedup.py + engine/collectors.py (+ web/source_rank.py for the UI).
+
+[22] TENDER RE-CHECK (was undocumented — workflows/recheck.py, table recheck_state)
+    Purpose: achizitii/generic sites have no API, so already-relevant tenders are periodically
+    re-fetched to catch status/deadline changes (cancelled, awarded, deadline moved).
+    SCOPE (workflows/recheck.py _SCOPE): ONLY tenders with applicability can/partial, or triage
+    relevant not yet analyzed — never the whole base. run_recheck(store,conn,fetch,gw,limit=200)
+    walks them oldest-updated first. Per tender: skip if _closed(nj) (cancelled / awarded /
+    deadline already past — no fetch, no model call); fetch the page; _html_to_text it; hash the
+    TEXT (not the raw HTML, so script noise / counters don't defeat the gate) against
+    recheck_state.content_hash — unchanged = free; changed = ONE small model call (RECHECK_SYS,
+    text capped 20k chars, max_tokens 200) that returns {status,deadline,cancelled,awarded};
+    _apply merges into nj and _store_item persists (origin="recheck" is passed but existing rows
+    keep their stored origin — origin is only written on INSERT). Note a content change sets
+    tenders.status="updated", which re-enters the analysis pipeline; llm_cache makes the re-run
+    cheap when the underlying documents/context did not change. Tests: tests/test_recheck.py.
+    SEND: workflows/recheck.py (+ engine/collectors.py for _store_item context).
+
+[23] TOKEN-LEAK PASS (Jul 23) — what was leaking and what now guards it. Do not undo these:
+    * STUB-CACHE POISONING (engine/llm.py): stub responses used to be written to llm_cache under
+      the same key a real call would use, so adding a real key later served cached
+      "STUB_RESPONSE: ..." as if real — garbage verdicts, then a full paid re-analysis after
+      reset. Now: stub responses are NEVER cached, and a poisoned entry found on read by a real
+      provider is deleted and the call re-made. Tests: tests/test_token_leaks.py.
+    * CACHED KEY PING (web/user/routes_home.py analyze_now): the "is the key alive" ping went
+      through gw.complete with identical input every time, so after the first success it was
+      answered from llm_cache forever and a dead key passed. Now it calls
+      engine.health.check_api_key (uncached live ping) when the provider is anthropic.
+    * FRONT-PAGE HASH GATE (genericweb + crawl_state.page_hash): in incremental mode, if page 1's
+      extracted text hashes identical to the previous run, the model call is skipped entirely
+      (note "front page unchanged"). The hash is saved only AFTER a successful extraction, so a
+      failed run never masks the next one. Backfill/estimate modes ignore the gate. With ~30
+      sites on a daily schedule this is the difference between paying per run and paying per
+      actual change.
+    * RECHECK waste (see [22]): dead tenders skipped before fetch; hash over text not raw HTML.
+    * VERIFY DEFAULT: verify.strictness default changed strict -> balanced (retry only on
+      MISSING fields, flag issues instead of re-running produce+verify). Verification runs after
+      extract, applicability AND suppliers, and on "strict" a retry re-runs the producer too —
+      on applicability that is an extra sonnet call per flagged tender. NOTE: seed_defaults never
+      overwrites an existing install's value; the live instance must flip it in the UI
+      (Company settings) or via store.set("verify.strictness","balanced").
+    * STILL OPEN, deliberate: no Anthropic prompt caching (cache_control) — the applicability
+      system prompt + company profile is re-billed at full input price per tender on sonnet.
+      Adding cache_control ephemeral blocks in AnthropicProvider.generate would cut that part
+      ~90% on batches; needs a provider-level change, decide with Victor.
 
 [20] INSTALL VERIFIER
     verify_install.py (repo root, plain stdlib, run with the SERVER's python: `.venv/bin/python verify_install.py`

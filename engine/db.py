@@ -215,7 +215,8 @@ CREATE TABLE IF NOT EXISTS crawl_state (
     exhausted INTEGER DEFAULT 0,
     total_estimate INTEGER,
     note TEXT,
-    detected_count INTEGER
+    detected_count INTEGER,
+    page_hash TEXT
 );
 
 CREATE TABLE IF NOT EXISTS dismissed_tenders (
@@ -315,6 +316,9 @@ def _migrate(conn):
     if _column_exists(conn, "crawl_state", "site_id") and \
             not _column_exists(conn, "crawl_state", "detected_count"):
         conn.execute("ALTER TABLE crawl_state ADD COLUMN detected_count INTEGER")
+    if _column_exists(conn, "crawl_state", "site_id") and \
+            not _column_exists(conn, "crawl_state", "page_hash"):
+        conn.execute("ALTER TABLE crawl_state ADD COLUMN page_hash TEXT")
         conn.commit()
     if not _column_exists(conn, "tenders", "origin"):
         conn.execute("ALTER TABLE tenders ADD COLUMN origin TEXT")

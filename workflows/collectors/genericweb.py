@@ -12,6 +12,7 @@ from urllib.parse import parse_qsl, urlencode, urljoin, urlsplit, urlunsplit
 
 from engine.collectors import (CollectContext, CollectedItem, CollectResult,
                                Collector, register_collector)
+from engine.hashing import content_hash
 from engine.http import get_text
 from engine.dateparse import normalize_field, parse_date
 from engine.lifecycle import archive_reason, collect_ceiling
@@ -271,10 +272,11 @@ def api_covered(url):
 
 def _load_state(conn, site_id):
     row = conn.execute(
-        "SELECT next_url, auth_json, total_collected, exhausted, total_estimate "
+        "SELECT next_url, auth_json, total_collected, exhausted, total_estimate, page_hash "
         "FROM crawl_state WHERE site_id = ?", (site_id,)).fetchone()
     if not row:
-        return {"next_url": None, "auth": None, "total": 0, "exhausted": 0, "estimate": None}
+        return {"next_url": None, "auth": None, "total": 0, "exhausted": 0, "estimate": None,
+                "page_hash": None}
     auth = None
     if row["auth_json"]:
         try:
@@ -283,7 +285,7 @@ def _load_state(conn, site_id):
             auth = None
     return {"next_url": row["next_url"], "auth": auth,
             "total": row["total_collected"] or 0, "exhausted": row["exhausted"] or 0,
-            "estimate": row["total_estimate"]}
+            "estimate": row["total_estimate"], "page_hash": row["page_hash"]}
 
 
 def _save_state(conn, site_id, next_url, total, exhausted):
@@ -315,6 +317,15 @@ def _save_detected(conn, site_id, count):
         "ON CONFLICT(site_id) DO UPDATE SET detected_count=excluded.detected_count, "
         "last_run_at=excluded.last_run_at",
         (site_id, int(count), time.time()))
+    conn.commit()
+
+
+def _save_page_hash(conn, site_id, phash):
+    conn.execute(
+        "INSERT INTO crawl_state(site_id, page_hash, last_run_at) VALUES(?,?,?) "
+        "ON CONFLICT(site_id) DO UPDATE SET page_hash=excluded.page_hash, "
+        "last_run_at=excluded.last_run_at",
+        (site_id, phash, time.time()))
     conn.commit()
 
 
@@ -482,7 +493,17 @@ class GenericWebCollector(Collector):
                     log.warning("fetch failed site=%s url=%s: %s",
                                 site.get("label"), current, exc)
                     break
+                phash = content_hash(text) if (mode == "incremental" and pages == 1) else None
+                if phash and state["page_hash"] == phash:
+                    _save_note(conn, site_id,
+                               "front page unchanged since last check — model call skipped")
+                    log.info("site=%s incremental: front page unchanged, skipped",
+                             site.get("label"))
+                    resume = None
+                    break
                 tenders, next_url, est = _extract(gw, store, text, current, sc)
+                if phash:
+                    _save_page_hash(conn, site_id, phash)
                 if first_est is None and est is not None:
                     first_est = est
                 if first_diag is None:

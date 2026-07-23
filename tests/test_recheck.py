@@ -94,3 +94,64 @@ def test_no_url_is_skipped(tmp_path):
     gw = FakeGW({"status": "open"})
     stats = run_recheck(FakeStore(), conn, fetch=lambda u: "x", gw=gw)
     assert stats["skip"] == 1 and gw.calls == 0
+
+
+def test_closed_tender_is_not_fetched(tmp_path):
+    conn = _conn(tmp_path)
+    now = time.time()
+    conn.execute(
+        "INSERT INTO tenders(id, source, external_id, content_hash, normalized_json, status, "
+        "created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)",
+        (9, "genericweb", "achizitii:9", "h9",
+         json.dumps({"title": "T9", "buyer": "B", "url": "https://achizitii.md/t/9",
+                     "status": "cancelled"}), "new", now, now))
+    conn.execute(
+        "INSERT INTO verdicts(tender_id, stage_name, verdict, score, created_at) "
+        "VALUES(?,?,?,?,?)", (9, "applicability", "can", 1.0, now))
+    conn.commit()
+    gw = FakeGW({"status": "open"})
+    fetched = {"n": 0}
+
+    def fetch(url):
+        fetched["n"] += 1
+        return "page"
+
+    stats = run_recheck(FakeStore(), conn, fetch=fetch, gw=gw)
+    assert stats["closed"] == 1
+    assert fetched["n"] == 0
+    assert gw.calls == 0
+
+
+def test_past_deadline_tender_is_not_fetched(tmp_path):
+    conn = _conn(tmp_path)
+    now = time.time()
+    conn.execute(
+        "INSERT INTO tenders(id, source, external_id, content_hash, normalized_json, status, "
+        "created_at, updated_at) VALUES(?,?,?,?,?,?,?,?)",
+        (8, "genericweb", "achizitii:8", "h8",
+         json.dumps({"title": "T8", "buyer": "B", "url": "https://achizitii.md/t/8",
+                     "deadline": "2020-01-01"}), "new", now, now))
+    conn.execute(
+        "INSERT INTO verdicts(tender_id, stage_name, verdict, score, created_at) "
+        "VALUES(?,?,?,?,?)", (8, "applicability", "can", 1.0, now))
+    conn.commit()
+    gw = FakeGW({"status": "open"})
+    stats = run_recheck(FakeStore(), conn, fetch=lambda u: "page", gw=gw)
+    assert stats["closed"] == 1
+    assert gw.calls == 0
+
+
+def test_dynamic_html_noise_does_not_defeat_the_hash(tmp_path):
+    conn = _conn(tmp_path)
+    _add(conn, 7, "https://achizitii.md/t/7")
+    gw = FakeGW({"status": "open"})
+    pages = ['<script>var t=111</script><p>Tender body</p>',
+             '<script>var t=222</script><p>Tender body</p>']
+
+    def fetch(url):
+        return pages.pop(0)
+
+    run_recheck(FakeStore(), conn, fetch=fetch, gw=gw)
+    stats = run_recheck(FakeStore(), conn, fetch=fetch, gw=gw)
+    assert gw.calls == 1
+    assert stats["unchanged"] == 1
