@@ -4,8 +4,10 @@ import json
 import time
 
 from engine.collectors import CollectedItem, _store_item
+from engine.dateparse import day_end_ts
 from engine.hashing import content_hash
 from engine.llm import LLMGateway
+from workflows.collectors.genericweb import _html_to_text
 
 _SCOPE = (
     "SELECT t.id, t.source, t.external_id, t.normalized_json "
@@ -73,8 +75,21 @@ def _apply(nj, data):
     return out
 
 
+def _closed(nj, now=None):
+    if str(nj.get("status") or "").lower() == "cancelled":
+        return True
+    if nj.get("awarded"):
+        return True
+    ts = day_end_ts(nj.get("deadline"))
+    if ts is not None and ts < (now or time.time()):
+        return True
+    return False
+
+
 def recheck_one(store, conn, row, fetch, gw):
     nj = _nj(row)
+    if _closed(nj):
+        return "closed"
     url = _url_of(nj)
     if not url:
         return "skip"
@@ -84,13 +99,14 @@ def recheck_one(store, conn, row, fetch, gw):
         return "error"
     if not page:
         return "error"
-    phash = content_hash(page)
+    text = _html_to_text(str(page), url, 20000)
+    phash = content_hash(text)
     seen = conn.execute("SELECT content_hash FROM recheck_state WHERE tender_id=?",
                         (row["id"],)).fetchone()
     if seen and seen["content_hash"] == phash:
         return "unchanged"
     resp = gw.complete("extract", RECHECK_SYS,
-                       [{"role": "user", "content": str(page)[:20000]}], max_tokens=200)
+                       [{"role": "user", "content": text}], max_tokens=200)
     data = _parse(resp.get("text", "")) or {}
     changed = _apply(nj, data)
     item = CollectedItem(external_id=row["external_id"], raw={"recheck": True, "url": url},
@@ -109,7 +125,7 @@ def run_recheck(store, conn, fetch=None, gw=None, limit=200, logger=lambda m: No
     fetch = fetch or _fetch_default
     gw = gw or LLMGateway(store, conn)
     rows = conn.execute(_SCOPE, (limit,)).fetchall()
-    stats = {"checked": 0, "unchanged": 0, "skip": 0, "error": 0}
+    stats = {"checked": 0, "unchanged": 0, "skip": 0, "error": 0, "closed": 0}
     for r in rows:
         res = recheck_one(store, conn, r, fetch, gw)
         stats[res] = stats.get(res, 0) + 1
