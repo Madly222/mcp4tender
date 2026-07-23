@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 from fastapi import APIRouter
 from fastapi.responses import RedirectResponse
 
@@ -78,3 +79,20 @@ def _bar(collected, est, detected=None):
             f'border-radius:6px;height:9px;overflow:hidden">'
             f'<div style="background:var(--acc);height:100%;width:{pct}%"></div></div>'
             f'<div class="mut" style="font-size:11px;margin-top:4px">{_e(label)}</div></div>')
+
+
+_SITES_LOCK = threading.Lock()
+
+
+def mutate_sites(store, fn, note, key="sites.tenders", actor="web"):
+    with _SITES_LOCK:
+        store.reload()
+        lst = list(store.get(key, []) or [])
+        out = fn(lst)
+        store.set(key, lst, actor=actor, note=note)
+        return out
+
+
+def append_site(store, entry, note, key="sites.tenders"):
+    return mutate_sites(store, lambda lst: lst.append(entry) or entry, note, key)
+

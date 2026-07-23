@@ -6,7 +6,8 @@ import uuid
 from fastapi import Form, Request
 
 from web.render import _e, _layout, _table
-from web.sites_common import (_bar, _crawl_rows, _probe_url, _redir_sites,
+from web.sites_common import (append_site, mutate_sites,
+                              _bar, _crawl_rows, _probe_url, _redir_sites,
                               _set_auth, _validate_url, router)
 
 
@@ -23,7 +24,6 @@ def sites_add(request: Request, kind: str = Form(...), label: str = Form(""),
     reachable, rmsg = _probe_url(url)
     store = request.state.store
     key = "sites.tenders" if kind == "tenders" else "sites.partners"
-    lst = list(store.get(key, []) or [])
     sid = uuid.uuid4().hex[:8]
     entry = {"id": sid, "label": label.strip() or url.strip(), "url": url.strip()}
     if kind == "tenders":
@@ -38,8 +38,7 @@ def sites_add(request: Request, kind: str = Form(...), label: str = Form(""),
     else:
         entry["category"] = category.strip()
         entry["notes"] = notes.strip()
-    lst.append(entry)
-    store.set(key, lst, actor="web", note="add site via web")
+    append_site(store, entry, "add site via web", key=key)
     if kind == "tenders" and login.strip():
         _set_auth(request.state.conn, sid,
                   {"type": "basic", "user": login.strip(), "pass": password})
@@ -72,15 +71,17 @@ def sites_add(request: Request, kind: str = Form(...), label: str = Form(""),
                         f"saved anyway, check the URL")
 
 def _save_probe(store, sid, finds):
-    lst = list(store.get("sites.tenders", []) or [])
-    for site in lst:
-        if site.get("id") == sid:
-            top = finds[0] if finds else None
-            site["feed_kind"] = top["kind"] if top else None
-            site["feed_url"] = top["url"] if top else None
-            site["feed_note"] = top["note"] if top else "nothing found"
-    store.set("sites.tenders", lst, actor="app", note="feed probe")
-    return finds[0] if finds else None
+    top = finds[0] if finds else None
+
+    def apply(lst):
+        for site in lst:
+            if site.get("id") == sid:
+                site["feed_kind"] = top["kind"] if top else None
+                site["feed_url"] = top["url"] if top else None
+                site["feed_note"] = top["note"] if top else "nothing found"
+
+    mutate_sites(store, apply, "feed probe", actor="app")
+    return top
 
 
 @router.post("/app/settings/sites/probe")
@@ -108,16 +109,17 @@ def sites_settings(request: Request, id: str = Form(...), batch_size: str = Form
     except (TypeError, ValueError):
         n = 30
     order = date_order if date_order in ("dmy", "mdy") else ""
-    store = request.state.store
-    lst = list(store.get("sites.tenders", []) or [])
-    for s in lst:
-        if s.get("id") == id:
-            s["batch_size"] = n
-            if order:
-                s["date_order"] = order
-            elif "date_order" in s:
-                s.pop("date_order")
-    store.set("sites.tenders", lst, actor="web", note="set batch via web")
+
+    def apply(lst):
+        for s in lst:
+            if s.get("id") == id:
+                s["batch_size"] = n
+                if order:
+                    s["date_order"] = order
+                elif "date_order" in s:
+                    s.pop("date_order")
+
+    mutate_sites(request.state.store, apply, "set batch via web")
     return _redir_sites(msg=f"batch set: {n} tenders")
 
 @router.post("/app/settings/sites/rank")
@@ -139,18 +141,19 @@ def sites_edit_url(request: Request, id: str = Form(...), url: str = Form(""),
     ok, err = _validate_url(url)
     if not ok:
         return _redir_sites(err=err)
-    store = request.state.store
-    lst = list(store.get("sites.tenders", []) or [])
-    found = False
-    for s in lst:
-        if s.get("id") == id:
-            s["url"] = url.strip()
-            if label.strip():
-                s["label"] = label.strip()
-            found = True
-    if not found:
+    hit = {"found": False}
+
+    def apply(lst):
+        for s in lst:
+            if s.get("id") == id:
+                s["url"] = url.strip()
+                if label.strip():
+                    s["label"] = label.strip()
+                hit["found"] = True
+
+    mutate_sites(request.state.store, apply, "edit site url via web")
+    if not hit["found"]:
         return _redir_sites(err="site not found")
-    store.set("sites.tenders", lst, actor="web", note="edit site url via web")
     return _redir_sites(msg="link updated")
 
 
@@ -177,10 +180,12 @@ def sites_reset(request: Request, id: str = Form(...)):
 def sites_remove(request: Request, kind: str = Form(...), id: str = Form(...)):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
-    store = request.state.store
     key = "sites.tenders" if kind == "tenders" else "sites.partners"
-    lst = [s for s in (store.get(key, []) or []) if s.get("id") != id]
-    store.set(key, lst, actor="web", note="remove site via web")
+
+    def apply(lst):
+        lst[:] = [s for s in lst if s.get("id") != id]
+
+    mutate_sites(request.state.store, apply, "remove site via web", key=key)
     if kind == "tenders":
         request.state.conn.execute("DELETE FROM crawl_state WHERE site_id=?", (id,))
         request.state.conn.commit()
@@ -190,12 +195,12 @@ def sites_remove(request: Request, kind: str = Form(...), id: str = Form(...)):
 def sites_toggle(request: Request, id: str = Form(...)):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
-    store = request.state.store
-    lst = list(store.get("sites.tenders", []) or [])
-    for s in lst:
-        if s.get("id") == id:
-            s["enabled"] = not s.get("enabled", True)
-    store.set("sites.tenders", lst, actor="web", note="toggle site via web")
+    def apply(lst):
+        for s in lst:
+            if s.get("id") == id:
+                s["enabled"] = not s.get("enabled", True)
+
+    mutate_sites(request.state.store, apply, "toggle site via web")
     return _redir_sites()
 
 @router.post("/app/settings/sites/search-toggle")
@@ -212,14 +217,15 @@ def sites_search_toggle(request: Request):
 def sites_render_toggle(request: Request, id: str = Form(...)):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
-    store = request.state.store
-    lst = list(store.get("sites.tenders", []) or [])
-    state = False
-    for s in lst:
-        if s.get("id") == id:
-            s["render"] = not s.get("render", False)
-            state = s["render"]
-    store.set("sites.tenders", lst, actor="web", note="toggle render via web")
-    return _redir_sites(msg="JS rendering " + ("on" if state else "off"))
+    box = {"state": False}
+
+    def apply(lst):
+        for s in lst:
+            if s.get("id") == id:
+                s["render"] = not s.get("render", False)
+                box["state"] = s["render"]
+
+    mutate_sites(request.state.store, apply, "toggle render via web")
+    return _redir_sites(msg="JS rendering " + ("on" if box["state"] else "off"))
 
 from web import routes_sites_collect, routes_sites_diag, sites_view  # noqa: E402,F401

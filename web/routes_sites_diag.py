@@ -6,7 +6,8 @@ import uuid
 from fastapi import Form, Request
 
 from web.render import _e
-from web.sites_common import (_bar, _crawl_rows, _probe_url, _redir_sites,
+from web.sites_common import (append_site,
+                              _bar, _crawl_rows, _probe_url, _redir_sites,
                               _set_auth, _validate_url, router)
 from web.user.counts import nav_counts
 from web.user.icons import icon
@@ -170,7 +171,6 @@ def sites_detect(request: Request, label: str = Form(""), url: str = Form(""),
     profile = smart_detect(store, conn, target, auth=auth)
     resolved = profile.get("url") or target
 
-    lst = list(store.get("sites.tenders", []) or [])
     sid = uuid.uuid4().hex[:8]
     try:
         step = max(1, min(1000, int(batch_size)))
@@ -179,8 +179,7 @@ def sites_detect(request: Request, label: str = Form(""), url: str = Form(""),
     entry = {"id": sid, "label": label.strip() or resolved, "url": resolved,
              "enabled": not profile["needs_login"], "render": bool(profile["render"]),
              "engine": profile["engine"], "batch_size": step}
-    lst.append(entry)
-    store.set("sites.tenders", lst, actor="web", note="add site via auto-detect")
+    append_site(store, entry, "add site via auto-detect")
     if auth:
         _set_auth(conn, sid, auth)
 

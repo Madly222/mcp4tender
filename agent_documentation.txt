@@ -233,6 +233,12 @@ HARD-WON DECISIONS — DO NOT UNDO
   unticked checkbox = OFF (forms write ALL booleans), currency is a <select> because a typo'd
   currency silently zeroed line costs. Preferences = per-person view knobs (theme) ONLY;
   everything that changes tenders/cost is Company settings.
+- SITES LIST MUTATIONS ARE ATOMIC (web/sites_common.py mutate_sites/append_site: process lock +
+  store.reload() right before write). The bug this fixed: add/detect held a request-start config
+  snapshot through a slow probe/detect (up to a minute), then wrote the WHOLE sites list back —
+  a site added from a second tab in that window was silently erased. Every handler that rewrites
+  sites.tenders/partners (add, detect, settings, edit-url, remove, toggles, feed probe) goes
+  through the helper; never write store.set("sites.tenders", ...) directly from a route again.
 - QUALIFIED SORT: deadline default with N/A last via day_end_ts; the old unconditional re-sort
   inside the handler was removed — the ?sort= param is the single authority.
 - web.cookie_secure stays False until TLS fronts the app; flipping early kills sessions over HTTP.
