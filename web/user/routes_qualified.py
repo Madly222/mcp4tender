@@ -90,7 +90,8 @@ def qualified_send(request: Request, tender_id: int, back: str = Form("/app/qual
 
 
 @router.get("/app/qualified")
-def qualified(request: Request, stage: str = "", msg: str = "", err: str = ""):
+def qualified(request: Request, stage: str = "", msg: str = "", err: str = "",
+              sort: str = "deadline"):
     conn, store = request.state.conn, request.state.store
     acct_id = work.account_id(request)
     wanted = _wanted(stage)
@@ -107,11 +108,17 @@ def qualified(request: Request, stage: str = "", msg: str = "", err: str = ""):
             rows += conn.execute(
                 f"{SELECT.split('WHERE')[0]} WHERE t.id IN ({marks2})",
                 tuple(missing)).fetchall()
+    if sort == "deadline":
+        def _dlk(r):
+            raw, _est = cards.deadline_of(r, cards.nj_of(r))
+            ts = day_end_ts(raw) if raw else None
+            return (ts is None, ts or 0)
+        rows = sorted(rows, key=_dlk)
+    else:
+        rows = sorted(rows, key=lambda r: r["created_at"] or 0, reverse=True)
 
     info = work.stages_for(conn, [r["id"] for r in rows], acct_id)
     now = time.time()
-    rows.sort(key=lambda r: day_end_ts(cards.deadline_of(r, cards.nj_of(r))[0])
-              or float("inf"))
     back = request.url.path + ("?" + str(request.url.query) if request.url.query else "")
 
     if rows:
@@ -143,12 +150,21 @@ def qualified(request: Request, stage: str = "", msg: str = "", err: str = ""):
     lede = ("Tenders you kept. Move them along as the bid takes shape — the note is yours to use "
             "however you like.")
     head = _kpis(counts, _closing_soon(rows, now)) if not stage else ""
+    q_stage = f"stage={stage}&" if stage else ""
+    sorter = ('<div class="card"><div class="card-b" style="padding:10px 16px">'
+              '<span class="mut" style="font-size:12px">Sort:</span> '
+              + " ".join(
+                  (f'<b style="margin-left:8px">{lbl}</b>' if sort == key else
+                   f'<a style="margin-left:8px;color:var(--acc)" '
+                   f'href="/app/qualified?{q_stage}sort={key}">{lbl}</a>')
+                  for key, lbl in (("deadline", "By deadline"), ("new", "Newest")))
+              + '</div></div><div class="gap"></div>')
     flash = ""
     if msg:
         flash = f'<div class="card"><div class="card-b"><span class="chip ok">Sent</span> {_e(msg)}</div></div><div class="gap"></div>'
     elif err:
         flash = f'<div class="card"><div class="card-b"><span class="chip bad">Not sent</span> {_e(err)}</div></div><div class="gap"></div>'
-    return render(request, "Qualified", _tabs(stage, counts) + flash + head + table,
+    return render(request, "Qualified", _tabs(stage, counts) + flash + head + sorter + table,
                   heading=work.LABELS.get(stage, "Qualified") if stage else "Qualified",
                   heading_icon="check-circle", lede=lede,
                   counts=nav_counts(conn, store, acct_id))

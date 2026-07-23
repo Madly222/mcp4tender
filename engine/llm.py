@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import logging
 import os
 import time
@@ -57,6 +58,18 @@ def select_provider(store):
     return ap if ap.available else StubProvider()
 
 
+_CTX = threading.local()
+
+
+def set_context(tender_id=None, site_id=None):
+    _CTX.tender_id = tender_id
+    _CTX.site_id = site_id
+
+
+def get_context():
+    return (getattr(_CTX, "tender_id", None), getattr(_CTX, "site_id", None))
+
+
 class LLMGateway:
     def __init__(self, store, conn, provider=None):
         self.store = store
@@ -93,6 +106,8 @@ class LLMGateway:
                     self.conn.execute("DELETE FROM llm_cache WHERE cache_key = ?", (key,))
                     self.conn.commit()
                 else:
+                    self._record(stage, model, row["input_tokens"],
+                                 row["output_tokens"], 0.0, True)
                     return {"text": data["text"], "model": model,
                             "input_tokens": row["input_tokens"],
                             "output_tokens": row["output_tokens"],
@@ -127,9 +142,23 @@ class LLMGateway:
                  out["input_tokens"], out["output_tokens"], time.time()))
             self.conn.commit()
 
+        self._record(stage, model, out["input_tokens"], out["output_tokens"], cost, False)
         return {"text": text, "model": model,
                 "input_tokens": out["input_tokens"], "output_tokens": out["output_tokens"],
                 "cost": cost, "cached": False, "provider": self.provider.name}
+
+    def _record(self, stage, model, itok, otok, cost, cached):
+        try:
+            tender_id, site_id = get_context()
+            self.conn.execute(
+                "INSERT INTO llm_spend(ts, stage, model, provider, input_tokens, "
+                "output_tokens, cost, cached, tender_id, site_id) "
+                "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (time.time(), stage, model, self.provider.name, itok or 0, otok or 0,
+                 float(cost or 0), 1 if cached else 0, tender_id, site_id))
+            self.conn.commit()
+        except Exception:
+            log.debug("llm_spend record failed", exc_info=True)
 
     def expects_real_but_stub(self):
         return self.store.get("llm.provider", "auto") != "stub" and self.provider.name == "stub"

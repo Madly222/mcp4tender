@@ -17,6 +17,7 @@ from engine.http import get_text
 from engine.dateparse import normalize_field, parse_date
 from engine.lifecycle import archive_reason, collect_ceiling
 from engine.jsonutil import loads_loose
+from engine import llm as llm_mod
 from engine.llm import LLMGateway
 
 log = logging.getLogger("tenderengine.collector.genericweb")
@@ -493,6 +494,7 @@ class GenericWebCollector(Collector):
                     log.warning("fetch failed site=%s url=%s: %s",
                                 site.get("label"), current, exc)
                     break
+                llm_mod.set_context(site_id=site_id)
                 phash = content_hash(text) if (mode == "incremental" and pages == 1) else None
                 if phash and state["page_hash"] == phash:
                     _save_note(conn, site_id,

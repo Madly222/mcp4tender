@@ -152,6 +152,22 @@ CREATE TABLE IF NOT EXISTS tender_work (
     PRIMARY KEY (tender_id, account_id)
 );
 CREATE INDEX IF NOT EXISTS idx_tender_work_stage ON tender_work(account_id, stage);
+CREATE TABLE IF NOT EXISTS llm_spend (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts REAL NOT NULL,
+    stage TEXT,
+    model TEXT,
+    provider TEXT,
+    input_tokens INTEGER DEFAULT 0,
+    output_tokens INTEGER DEFAULT 0,
+    cost REAL DEFAULT 0,
+    cached INTEGER DEFAULT 0,
+    tender_id INTEGER,
+    site_id TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_llm_spend_ts ON llm_spend(ts);
+CREATE INDEX IF NOT EXISTS idx_llm_spend_tender ON llm_spend(tender_id);
+CREATE INDEX IF NOT EXISTS idx_llm_spend_site ON llm_spend(site_id);
 CREATE TABLE IF NOT EXISTS qualify_runs (
     tender_id INTEGER NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
     account_id INTEGER NOT NULL DEFAULT 0,

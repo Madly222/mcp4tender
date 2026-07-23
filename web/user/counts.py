@@ -34,4 +34,10 @@ def nav_counts(conn, store, acct_id=0):
     if waiting:
         out["planning"] = len(waiting)
     out.update({k: v for k, v in w.items() if v})
+    for k in ("qualified", "in_progress", "submitted"):
+        out[k] = w.get(k, 0)
+    from engine import alerts
+    n = alerts.unseen_count(conn, store)
+    if n:
+        out["alerts"] = n
     return out

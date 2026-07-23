@@ -280,7 +280,16 @@ def tender(request: Request, tender_id: int):
 
     portal = cards.portal_of(store)
     run = qualify.status_of(conn, row["id"], acct_id)
-    strip = _analysis_strip(row, run, request.state.readonly)
+    sp = conn.execute(
+        "SELECT COALESCE(SUM(cost),0) c, COUNT(*) n, COALESCE(SUM(cached),0) h "
+        "FROM llm_spend WHERE tender_id=?", (row["id"],)).fetchone()
+    spend = ""
+    if sp and sp["n"]:
+        val = f"${sp['c']:.4f}" if sp["c"] < 0.1 else f"${sp['c']:.2f}"
+        spend = (f'<div class="pref-help" style="margin:0 0 10px">AI spend on this tender: '
+                 f'<b class="num">{val}</b> · {sp["n"]} calls, {sp["h"]} from cache · '
+                 '<a href="/app/costs" style="color:var(--acc)">all spending</a></div>')
+    strip = spend + _analysis_strip(row, run, request.state.readonly)
     left = strip + _verdict_card(row) + '<div class="gap"></div>' + _extraction(row)
     costing = _costing(row)
     if costing:

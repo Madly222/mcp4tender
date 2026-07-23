@@ -46,7 +46,7 @@ def _nav(path, query, counts):
                 for s in it["sub"]:
                     son = " on" if is_on(s["href"], path, query) else ""
                     n = counts.get(s.get("count"))
-                    ntxt = f'<span class="n num">{_e(n)}</span>' if n else ""
+                    ntxt = f'<span class="n num">{_e(n)}</span>' if n is not None else ""
                     sub.append(f'<a class="{son.strip()}" href="{_e(s["href"])}">'
                                f'{_e(s["label"])}{ntxt}</a>')
                 out.append('<div class="sub">' + "".join(sub) + "</div>")
