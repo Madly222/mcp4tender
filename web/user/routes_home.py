@@ -113,8 +113,8 @@ def _soon(openrows, now):
             mon = parts[1][:3] if len(parts) > 1 else ""
             items.append(f'<div class="mini"><div class="dt"><b class="num">{_e(day)}</b>'
                          f'<span>{_e(mon)}</span></div><div class="mt">'
-                         f'<b>{_e((nj.get("title") or "(untitled)")[:44])}</b>'
-                         f'<span>{_e((nj.get("buyer") or "")[:30])}</span></div></div>')
+                         f'<b>{_e((nj.get("title") or "(untitled)")[:90])}</b>'
+                         f'<span>{_e((nj.get("buyer") or "")[:70])}</span></div></div>')
         inner = ('<div class="card-b" style="padding-top:6px;padding-bottom:6px">'
                  + "".join(items) + "</div>")
     return ('<div class="card"><div class="card-h">'

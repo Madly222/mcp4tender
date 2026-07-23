@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 import uuid
 
+from . import llm
 from .contracts import StageContext
 from .hashing import content_hash
 from .registry import get_stage
@@ -49,6 +50,7 @@ def run_pipeline(pipeline_key, store, conn, initial_payload=None,
 
     payload = dict(initial_payload or {})
     failed = False
+    llm.set_context(tender_id=int(tender_id) if tender_id else None)
 
     for stage_name in stages:
         stage = get_stage(stage_name)
@@ -74,6 +76,7 @@ def run_pipeline(pipeline_key, store, conn, initial_payload=None,
             break
         payload = result.payload
 
+    llm.set_context()
     conn.execute(
         "UPDATE pipeline_runs SET status = ?, finished_at = ? WHERE run_id = ?",
         ("failed" if failed else "done", time.time(), run_id),

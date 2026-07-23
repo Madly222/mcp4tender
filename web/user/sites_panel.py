@@ -17,7 +17,7 @@ def _mini(action, fields, label, title="", cls="btn ghost sm", confirm=""):
             f'{hidden}<button class="{cls}" title="{_e(title)}">{label}</button></form>')
 
 
-def _site_card(s, cs, ro):
+def _site_card(s, cs, ro, spend=None):
     sid = s.get("id", "")
     covered = api_covered(s.get("url"))
     url = s.get("url") or ""
@@ -52,6 +52,11 @@ def _site_card(s, cs, ro):
         meta.append(f'<span class="chip plain">engine: {_e(s["engine"])}</span>')
     if s.get("render"):
         meta.append('<span class="chip plain">JS render (auto)</span>')
+    if spend and spend["n"]:
+        val = f"${spend['c']:.4f}" if spend["c"] < 0.1 else f"${spend['c']:.2f}"
+        meta.append(f'<span class="chip plain" title="model calls made reading this site; '
+                    f'cached answers cost nothing">spent <b class="num">{val}</b> · '
+                    f'{spend["n"]} calls, {spend["h"]} cached</span>')
     has_auth = bool(cs and cs["auth_json"])
 
     head = (f'<div class="site-h"><div class="site-t">'
@@ -166,8 +171,18 @@ def sites_panel(store, request):
     gw = store.get("sources.genericweb", {}) or {}
     gw_on = bool(gw.get("enabled", False))
     crawl = _crawl_rows(conn, [s.get("id") for s in tenders])
+    spend = {}
+    try:
+        for r in conn.execute(
+                "SELECT site_id, COUNT(*) n, COALESCE(SUM(cached),0) h, "
+                "COALESCE(SUM(cost),0) c FROM llm_spend WHERE site_id IS NOT NULL "
+                "GROUP BY site_id"):
+            spend[r["site_id"]] = {"n": r["n"], "h": r["h"], "c": r["c"]}
+    except Exception:
+        spend = {}
 
-    cards = "".join(_site_card(s, crawl.get(s.get("id", "")), ro) for s in tenders)
+    cards = "".join(_site_card(s, crawl.get(s.get("id", "")), ro,
+                               spend.get(str(s.get("id", "")))) for s in tenders)
     if not cards:
         cards = ('<div class="empty">No tender sites yet. MTender above works on its own; '
                  "add a site here only if it publishes tenders MTender does not.</div>")

@@ -6,6 +6,7 @@ import time
 from engine.collectors import CollectedItem, _store_item
 from engine.dateparse import day_end_ts
 from engine.hashing import content_hash
+from engine import llm as llm_mod
 from engine.llm import LLMGateway
 from workflows.collectors.genericweb import _html_to_text
 
@@ -99,6 +100,7 @@ def recheck_one(store, conn, row, fetch, gw):
         return "error"
     if not page:
         return "error"
+    llm_mod.set_context(tender_id=row["id"])
     text = _html_to_text(str(page), url, 20000)
     phash = content_hash(text)
     seen = conn.execute("SELECT content_hash FROM recheck_state WHERE tender_id=?",

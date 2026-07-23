@@ -4,9 +4,11 @@ NAV = [
     ("Work", [
         {"href": "/app", "label": "Dashboard", "icon": "dashboard"},
         {"href": "/app/inbox", "label": "Tender inbox", "icon": "inbox", "count": "inbox"},
+        {"href": "/app/alerts", "label": "Alerts", "icon": "bang", "count": "alerts"},
     ]),
     ("Opportunities", [
         {"href": "/app/qualified", "label": "Qualified", "icon": "check-circle",
+         "count": "qualified",
          "sub": [
              {"href": "/app/qualified?stage=in_progress", "label": "In progress",
               "count": "in_progress"},
@@ -19,6 +21,7 @@ NAV = [
     ("Everything", [
         {"href": "/app/search", "label": "Search all tenders", "icon": "search"},
         {"href": "/app/archive", "label": "Archive", "icon": "archive"},
+        {"href": "/app/costs", "label": "AI spending", "icon": "sliders"},
         {"href": "/app/preferences", "label": "Preferences", "icon": "sliders"},
         {"href": "/app/settings", "label": "Company settings", "icon": "gear"},
     ]),

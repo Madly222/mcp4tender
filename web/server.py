@@ -5,8 +5,8 @@ from fastapi.responses import JSONResponse, RedirectResponse
 
 from web import (assets, routes_analyze, routes_config, routes_digest, routes_schedule,
                  routes_settings, routes_sites, routes_stage, routes_results)
-from web.user import (routes_browse, routes_home, routes_inbox, routes_planning,
-                      routes_prefs, routes_qualified,
+from web.user import (routes_alerts, routes_browse, routes_home, routes_inbox,
+                      routes_planning, routes_prefs, routes_qualified,
                       routes_settings as user_settings_routes, routes_tender)
 from web.context import add_context_middleware, _expected_token
 from web.render import _login
@@ -61,6 +61,7 @@ def create_app(db_path):
         resp.delete_cookie("te_token")
         return resp
 
+    app.include_router(routes_alerts.router)
     app.include_router(routes_digest.router)
     app.include_router(routes_config.router)
     app.include_router(routes_sites.router)
