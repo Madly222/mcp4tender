@@ -222,3 +222,111 @@ def test_settings_page_has_the_section(tmp_path):
     assert "Sending credentials" in page
     assert "smtp_password" in page and "tg_token" in page
     assert "Send by email" in page and "Telegram chat or group ID" in page
+
+
+def test_email_has_date_and_message_id(tmp_path):
+    p, conn, store = _fresh(tmp_path, "n12.db")
+    tid = _add(conn)
+    store.set("notify.email.host", "10.0.0.5")
+    store.set("notify.email.from", "tender@rapidlink.md")
+    store.set("notify.email.to", "a@rapidlink.md, b@rapidlink.md")
+    FakeSMTP.sent = []
+    headers = {}
+
+    class HeaderSMTP(FakeSMTP):
+        def send_message(self, m):
+            headers["Date"] = m["Date"]
+            headers["Message-ID"] = m["Message-ID"]
+
+    msg = notify.build_message(store, conn, tid)
+    assert notify.send_email(store, msg, password="", smtp_cls=HeaderSMTP) == "sent"
+    assert headers["Date"]
+    assert headers["Message-ID"].endswith("@rapidlink.md>")
+    conn.close()
+
+
+def test_overall_rating_bands():
+    row = {"av_verdict": "can", "av_score": 80, "margin": 0.2, "av_reason": "{}"}
+    r = notify.overall_rating(row)
+    assert r["score"] == 90 and "strong" in r["label"]
+    row = {"av_verdict": "partial", "av_score": 70, "margin": None,
+           "av_reason": json.dumps({"gaps": ["a", "b"]})}
+    r = notify.overall_rating(row)
+    assert r["score"] == 47 and "risky" in r["label"]
+    row = {"av_verdict": "cannot", "av_score": 90, "margin": None, "av_reason": "{}"}
+    assert notify.overall_rating(row)["score"] == 25
+    row = {"av_verdict": None, "av_score": None, "margin": None, "av_reason": None}
+    assert notify.overall_rating(row) is None
+
+
+def test_text_sub_items_are_configurable(tmp_path):
+    p, conn, store = _fresh(tmp_path, "n13.db")
+    tid = _add(conn)
+    store.set("notify.text.buyer", False)
+    store.set("notify.text.link", False)
+    msg = notify.build_message(store, conn, tid)
+    assert "STISC" not in msg["text"]
+    assert "https://achizitii.md" not in msg["text"]
+    assert "Fit: " in msg["text"]
+    assert "Retea de calculatoare" in msg["text"]
+    conn.close()
+
+
+def test_analysis_block_off_drops_attachment_and_document(tmp_path):
+    p, conn, store = _fresh(tmp_path, "n14.db")
+    tid = _add(conn)
+    store.set("notify.message.block_analysis", False)
+    store.set("notify.email.host", "10.0.0.5")
+    store.set("notify.email.from", "t@x.md")
+    store.set("notify.email.to", "a@x.md")
+    store.set("notify.telegram.chat_id", "-1")
+    got = {}
+
+    class BodySMTP(FakeSMTP):
+        def send_message(self, m):
+            got["attachments"] = len(list(m.iter_attachments()))
+
+    msg = notify.build_message(store, conn, tid)
+    assert notify.send_email(store, msg, password="", smtp_cls=BodySMTP) == "sent"
+    assert got["attachments"] == 0
+    posts = []
+    assert notify.send_telegram(store, msg, token="1:a",
+                                post=lambda u, d, c: posts.append(u)) == "sent"
+    assert len(posts) == 1 and posts[0].endswith("/sendMessage")
+    conn.close()
+
+
+def test_text_block_off_sends_only_document(tmp_path):
+    p, conn, store = _fresh(tmp_path, "n15.db")
+    tid = _add(conn)
+    store.set("notify.message.block_text", False)
+    store.set("notify.telegram.chat_id", "-1")
+    msg = notify.build_message(store, conn, tid)
+    posts = []
+    assert notify.send_telegram(store, msg, token="1:a",
+                                post=lambda u, d, c: posts.append((u, d))) == "sent"
+    assert len(posts) == 1 and posts[0][0].endswith("/sendDocument")
+    assert b"caption" in posts[0][1]
+    conn.close()
+
+
+def test_all_blocks_off_refuses(tmp_path):
+    p, conn, store = _fresh(tmp_path, "n16.db")
+    tid = _add(conn)
+    store.set("notify.email.enabled", True)
+    store.set("notify.message.block_text", False)
+    store.set("notify.message.block_analysis", False)
+    res = notify.notify_tender(store, conn, tid)
+    assert res["status"] == "off" and "block" in res["detail"]
+    conn.close()
+
+
+def test_rating_in_report_and_settings_labels(tmp_path):
+    p, conn, store = _fresh(tmp_path, "n17.db")
+    tid = _add(conn)
+    msg = notify.build_message(store, conn, tid)
+    assert "Overall fit:" in msg["content"].decode("utf-8")
+    c = _login(p, conn)
+    page = c.get("/app/settings/sending").text
+    assert "Message: include the short text block" in page
+    assert "Text block: overall fit rating" in page

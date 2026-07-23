@@ -6,6 +6,7 @@ import smtplib
 import time
 import uuid
 from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
 from urllib import request as urlrequest
 
 from engine.secrets import read_env
@@ -68,6 +69,41 @@ def tender_link(store, row, nj):
     return source_url(row["source"], row["external_id"], portal) or nj.get("url") or ""
 
 
+TEXT_ITEMS = ("buyer", "value", "deadline", "verdict", "rating", "link")
+
+
+def message_options(store):
+    return {"block_text": bool(store.get("notify.message.block_text", True)),
+            "block_analysis": bool(store.get("notify.message.block_analysis", True)),
+            "text": {k: bool(store.get(f"notify.text.{k}", True)) for k in TEXT_ITEMS}}
+
+
+RATING_BANDS = ((75, "strong fit — bid"), (50, "worth bidding"),
+                (25, "risky — review the gaps"), (0, "poor fit"))
+
+
+def overall_rating(row, margin_min=0.15):
+    if row["av_verdict"] is None and row["av_score"] is None:
+        return None
+    score = float(row["av_score"] or 0)
+    verdict = (row["av_verdict"] or "").lower()
+    if verdict == "partial":
+        score -= 15
+    elif verdict == "cannot":
+        score = min(score, 25.0)
+    margin = row["margin"]
+    if margin is not None:
+        if margin >= margin_min:
+            score += 10
+        elif margin < 0:
+            score -= 20
+    gaps = _reason(row).get("gaps") or []
+    score -= min(len(gaps) * 4, 20)
+    score = max(0, min(100, round(score)))
+    label = next(lbl for floor, lbl in RATING_BANDS if score >= floor)
+    return {"score": score, "label": label}
+
+
 def _fmt_value(nj):
     v = nj.get("value_amount")
     if not v:
@@ -80,26 +116,35 @@ def build_message(store, conn, tender_id):
     if row is None:
         return None
     nj = _nj(row)
+    opts = message_options(store)
+    want = opts["text"]
     title = nj.get("title") or "(untitled)"
     link = tender_link(store, row, nj)
     reason = _reason(row)
     ex = _loose(row["ex_fields"])
+    margin_min = float(store.get("suppliers.margin_min", 0.15) or 0.15)
+    rating = overall_rating(row, margin_min)
 
     lines = [f"TENDER: {title}"]
-    if nj.get("buyer"):
+    if want["buyer"] and nj.get("buyer"):
         lines.append(f"Buyer: {nj['buyer']}")
-    if _fmt_value(nj):
+    if want["value"] and _fmt_value(nj):
         lines.append(f"Value: {_fmt_value(nj)}")
-    if nj.get("deadline"):
+    if want["deadline"] and nj.get("deadline"):
         lines.append(f"Deadline: {nj['deadline']}")
-    if row["av_verdict"]:
+    if want["verdict"] and row["av_verdict"]:
         score = f" ({row['av_score']})" if row["av_score"] is not None else ""
         lines.append(f"Verdict: {row['av_verdict']}{score}")
-    if link:
+    if want["rating"] and rating:
+        lines.append(f"Fit: {rating['score']}/100 — {rating['label']}")
+    if want["link"] and link:
         lines.append(f"Link: {link}")
     text = "\n".join(lines)
 
     md = [f"# {title}", ""]
+    if rating:
+        md.append(f"**Overall fit: {rating['score']}/100 — {rating['label']}**")
+        md.append("")
     facts = []
     for label, val in (("Buyer", nj.get("buyer")), ("Value", _fmt_value(nj)),
                        ("Published", nj.get("publication_date") or nj.get("date")),
@@ -176,7 +221,8 @@ def build_message(store, conn, tender_id):
 
     fname = f"tender-{row['id']}-analysis.md"
     return {"subject": f"Tender: {title}"[:180], "text": text,
-            "filename": fname, "content": "\n".join(md).encode("utf-8")}
+            "filename": fname, "content": "\n".join(md).encode("utf-8"),
+            "blocks": opts}
 
 
 def email_config(store):
@@ -205,11 +251,16 @@ def send_email(store, msg, password=None, smtp_cls=None):
     m["Subject"] = msg["subject"]
     m["From"] = cfg["sender"]
     m["To"] = ", ".join(cfg["to"])
-    m.set_content(msg["text"])
-    ctype = mimetypes.guess_type(msg["filename"])[0] or "text/markdown"
-    main, sub = ctype.split("/", 1)
-    m.add_attachment(msg["content"], maintype=main, subtype=sub,
-                     filename=msg["filename"])
+    m["Date"] = formatdate(localtime=True)
+    domain = cfg["sender"].split("@", 1)[1] if "@" in cfg["sender"] else None
+    m["Message-ID"] = make_msgid(domain=domain)
+    blocks = msg.get("blocks") or {"block_text": True, "block_analysis": True}
+    m.set_content(msg["text"] if blocks.get("block_text", True) else msg["subject"])
+    if blocks.get("block_analysis", True):
+        ctype = mimetypes.guess_type(msg["filename"])[0] or "text/markdown"
+        main, sub = ctype.split("/", 1)
+        m.add_attachment(msg["content"], maintype=main, subtype=sub,
+                         filename=msg["filename"])
     cls = smtp_cls or smtplib.SMTP
     password = password if password is not None else smtp_password()
     try:
@@ -251,13 +302,17 @@ def send_telegram(store, msg, token=None, post=None):
         return f"skipped: fill in telegram {', '.join(need)}"
     post = post or _tg_post
     base = f"https://api.telegram.org/bot{token}"
+    blocks = msg.get("blocks") or {"block_text": True, "block_analysis": True}
     try:
-        payload = json.dumps({"chat_id": cfg["chat_id"], "text": msg["text"],
-                              "disable_web_page_preview": True}).encode("utf-8")
-        post(f"{base}/sendMessage", payload, "application/json")
-        body, ctype = _multipart({"chat_id": cfg["chat_id"]},
-                                 msg["filename"], msg["content"])
-        post(f"{base}/sendDocument", body, ctype)
+        if blocks.get("block_text", True):
+            payload = json.dumps({"chat_id": cfg["chat_id"], "text": msg["text"],
+                                  "disable_web_page_preview": True}).encode("utf-8")
+            post(f"{base}/sendMessage", payload, "application/json")
+        if blocks.get("block_analysis", True):
+            body, ctype = _multipart({"chat_id": cfg["chat_id"],
+                                      "caption": msg["subject"][:1000]},
+                                     msg["filename"], msg["content"])
+            post(f"{base}/sendDocument", body, ctype)
         return "sent"
     except Exception as exc:
         return f"error: {str(exc)[:200]}"
@@ -277,6 +332,11 @@ def notify_tender(store, conn, tender_id, emailer=None, telegrammer=None):
     msg = build_message(store, conn, tender_id)
     if msg is None:
         return {"status": "error", "detail": "no such tender"}
+    blocks = msg["blocks"]
+    if not blocks["block_text"] and not blocks["block_analysis"]:
+        return {"status": "off",
+                "detail": "every message block is unticked — turn at least one back on in "
+                          "Company settings → Sending results"}
     out = {"status": "ok", "detail": ""}
     parts = []
     if on["email"]:

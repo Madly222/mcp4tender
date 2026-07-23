@@ -1003,6 +1003,24 @@ COMPONENT MAP
         has a real label in web/user/labels.py (the labels test enforces this).
       web/user/routes_qualified.py -> POST /app/qualified/{id}/send + a msg/err flash strip on
         the page; routes at /app/settings/notify/{save,test}. Icon "send" added to icons.py.
+    COMPOSABLE MESSAGE (Jul 23, second pass): the message is built from BLOCKS, each with an
+      on/off checkbox in the same settings section, and the text block has per-item checkboxes:
+      notify.message.block_text / block_analysis toggle the blocks; notify.text.{buyer,value,
+      deadline,verdict,rating,link} choose what the text contains (the title always leads).
+      block_text off -> email body falls back to the subject, Telegram skips sendMessage and the
+      report goes as a document with a subject caption; block_analysis off -> no attachment / no
+      sendDocument; both off -> notify_tender refuses with status "off". Future blocks: add a
+      builder, a notify.message.block_<id> default and a label — the checkbox appears by itself.
+      OVERALL FIT RATING: notify.overall_rating(row, margin_min) — deterministic, ZERO tokens,
+      from stored analysis only: readiness_score base; partial −15, cannot caps at 25; margin >=
+      suppliers.margin_min +10, negative margin −20; −4 per gap (max −20); clamp 0..100. Bands:
+      >=75 strong fit — bid, >=50 worth bidding, >=25 risky — review the gaps, else poor fit.
+      Shown as "Fit: N/100 — label" in the text block and bolded atop the report.
+    EMAIL DELIVERABILITY FIX (Jul 23, found live): outgoing mail had NO Date header, so amavis
+      on Victor's own server rejected multi-recipient sends as UBE ("Missing required header
+      field: Date") while the single-recipient test slipped through. send_email now sets Date
+      (formatdate) and Message-ID (make_msgid on the sender's domain). Never build an
+      EmailMessage here without both.
     Sandbox note: real SMTP/Telegram cannot be exercised here (network allowlist); everything is
     tested through the injectable seams (FakeSMTP, post=lambda). Verify live delivery on the
     server with the "Send a test now" button.
