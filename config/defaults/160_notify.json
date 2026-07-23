@@ -1,0 +1,11 @@
+{
+  "notify.email.enabled": false,
+  "notify.email.host": "",
+  "notify.email.port": 587,
+  "notify.email.tls": true,
+  "notify.email.login": "",
+  "notify.email.from": "",
+  "notify.email.to": "",
+  "notify.telegram.enabled": false,
+  "notify.telegram.chat_id": ""
+}

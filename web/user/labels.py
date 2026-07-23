@@ -5,6 +5,15 @@ import re
 # Keyed by the FULL config key on purpose: max_output_tokens exists under four different
 # prefixes and means something different in each. Never key these by the stem.
 LABELS = {
+    "notify.email.enabled": "Send by email",
+    "notify.email.host": "Mail server (host or IP)",
+    "notify.email.port": "Mail server port",
+    "notify.email.tls": "Use STARTTLS",
+    "notify.email.login": "Mail login",
+    "notify.email.from": "Send from (address)",
+    "notify.email.to": "Send to (comma-separated addresses)",
+    "notify.telegram.enabled": "Send to Telegram",
+    "notify.telegram.chat_id": "Telegram chat or group ID",
     "analyze.batch_size": "Tenders analysed per run",
     "collect.max_age_days": "Ignore tenders older than",
 

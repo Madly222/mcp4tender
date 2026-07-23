@@ -76,8 +76,21 @@ def qualified_save(request: Request, tender_id: int, stage: str = Form("qualifie
                             status_code=303)
 
 
+@router.post("/app/qualified/{tender_id}/send")
+def qualified_send(request: Request, tender_id: int, back: str = Form("/app/qualified")):
+    from urllib.parse import quote
+    target = back if back.startswith("/app") else "/app/qualified"
+    sep = "&" if "?" in target else "?"
+    if request.state.store.get("web.read_only"):
+        return RedirectResponse(target, status_code=303)
+    from workflows import notify
+    res = notify.notify_tender(request.state.store, request.state.conn, tender_id)
+    key = "msg" if res["status"] == "ok" else "err"
+    return RedirectResponse(f"{target}{sep}{key}=" + quote(res["detail"]), status_code=303)
+
+
 @router.get("/app/qualified")
-def qualified(request: Request, stage: str = ""):
+def qualified(request: Request, stage: str = "", msg: str = "", err: str = ""):
     conn, store = request.state.conn, request.state.store
     acct_id = work.account_id(request)
     wanted = _wanted(stage)
@@ -112,12 +125,15 @@ def qualified(request: Request, stage: str = ""):
             + cards.cell_when(r, cards.nj_of(r), now)
             + cards.cell_note(info.get(r["id"]))
             + cards.cell_move(r, info.get(r["id"]), back)
+            + (f'<td><button class="btn sm ghost" '
+               f'formaction="/app/qualified/{r["id"]}/send" '
+               f'title="Send the analysis by email / Telegram">{icon("send")}</button></td>')
             + "</form></tr>" for r in rows)
         table = ('<div class="card"><table><thead><tr>'
                  '<th style="width:130px">Stage</th><th>Tender</th>'
                  '<th style="width:120px">Value</th><th style="width:110px">Match</th>'
                  '<th style="width:130px">Deadline</th><th style="width:190px">Note</th>'
-                 '<th style="width:200px">Move</th>'
+                 '<th style="width:200px">Move</th><th style="width:52px">Send</th>'
                  f"</tr></thead><tbody>{body_rows}</tbody></table></div>")
     else:
         table = ('<div class="card"><div class="empty">Nothing here yet. '
@@ -127,7 +143,12 @@ def qualified(request: Request, stage: str = ""):
     lede = ("Tenders you kept. Move them along as the bid takes shape — the note is yours to use "
             "however you like.")
     head = _kpis(counts, _closing_soon(rows, now)) if not stage else ""
-    return render(request, "Qualified", _tabs(stage, counts) + head + table,
+    flash = ""
+    if msg:
+        flash = f'<div class="card"><div class="card-b"><span class="chip ok">Sent</span> {_e(msg)}</div></div><div class="gap"></div>'
+    elif err:
+        flash = f'<div class="card"><div class="card-b"><span class="chip bad">Not sent</span> {_e(err)}</div></div><div class="gap"></div>'
+    return render(request, "Qualified", _tabs(stage, counts) + flash + head + table,
                   heading=work.LABELS.get(stage, "Qualified") if stage else "Qualified",
                   heading_icon="check-circle", lede=lede,
                   counts=nav_counts(conn, store, acct_id))
