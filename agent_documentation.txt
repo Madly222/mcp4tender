@@ -11,6 +11,7 @@ EVERY setting as a human form (no raw JSON anywhere). Sites live at /app/setting
 has the lifecycle filter (open/closed/pending/awarded), a "Not open yet" page, the age-out bug is
 fixed (see [18g]), and the site Analyse/Test 500 is fixed (see [18i] — pushed, in main).
 SOURCE RANK + CROSS-SOURCE DEDUP are built ([21]), the tender RE-CHECK loop is built ([22]),
+the keep -> full-analysis journey is built ([24], first half of 16b — partners still pending),
 and a TOKEN-LEAK pass landed (see [23]) fixing stub-cache poisoning, the cached key ping on
 Analyze-now, wasted recheck calls, and adding a front-page hash gate to incremental collection.
 
@@ -552,15 +553,20 @@ COMPONENT MAP
            actor, note, created_at) and the admin /config/rollback route restores one. Nothing of
            that is exposed in /app/settings. Do this BEFORE (16) - it is the only thing /config
            still does that the user zone cannot.
-      (16b) NEXT, described by Victor Jul 20, the BIG one: carry a tender the whole way through the
-           pipeline once the user hits the green check in the inbox. Today the check just sets
-           tender_work.stage = "qualified" (STAGES: inbox -> qualified -> in_progress -> submitted
-           -> won/lost, plus skipped). The goal is that "keep" kicks off the real qualification
-           journey and follows it end to end, all the way to PARTNERS - i.e. when a kept tender
-           needs equipment/services the company itself does not supply, surface the matching
-           partner from sites.partners / the supplier catalog and drive that hand-off. Victor
-           flagged "there will be its own subtleties" around partners - do NOT design it blind,
-           get the specifics from him first. This is the next chat's main thread.
+      (16b) HALF DONE (Jul 23): the keep -> full-analysis half is built — see [24]. The green
+           check now kicks off a background per-tender run of the WHOLE pipeline (triage ->
+           extract -> applicability -> suppliers), i.e. re-evaluation with document reading,
+           fit verdict, catalog match and costing; the tender page shows live progress, the
+           result, and a Re-analyse button. STILL TO BUILD, the PARTNERS half: when a kept
+           tender needs equipment the company does not supply, surface the matching partner.
+           Victor's direction (Jul 23): partners are NOT sites — each partner is a FILE. The
+           user uploads a partner's price list as Excel; a separate ingestion step converts it
+           into a normalized machine-readable form (YAML/structured rows) the LLM can match
+           against, alongside the own-catalog matching that suppliers already does. Victor
+           flagged "there will be its own subtleties" — before building, pin down: column
+           mapping per partner (their Excels will not share a layout), refresh/versioning when
+           a partner sends a new file, and whether partner rows join suppliers.catalog or live
+           as a separate ranked catalog per partner.
       (16) NEXT, not started: DELETE the duplicated admin pages. Every one of these is now fully
            covered by /app/settings and nothing needs porting - they are pure duplication that
            will drift: /config (+ /config/item, /config/save, /config/rollback), /user-settings
@@ -930,6 +936,36 @@ COMPONENT MAP
       system prompt + company profile is re-billed at full input price per tender on sonnet.
       Adding cache_control ephemeral blocks in AnthropicProvider.generate would cut that part
       ~90% on batches; needs a provider-level change, decide with Victor.
+
+[24] QUALIFICATION RUNNER (keep -> full analysis, first half of 16b)
+    Purpose: the green check is a request for the REAL analysis, not just a stage flag. When a
+    tender is moved to "qualified" (inbox check, or the decision form on the tender page), the
+    full pipeline runs for THAT tender in a background thread and the page reports progress.
+    Files: workflows/qualify.py -> STEPS = triage/extract/applicability/suppliers each via
+      orchestrator.process_selected_tenders (statuses advance triaged->extracted->analyzed->
+      sourced; every stage store is DELETE+INSERT, so a re-run overwrites, never duplicates).
+      run_qualification(db_path, tender_id, acct_id) opens its OWN conn (thread-safe under WAL);
+      start_qualification spawns the daemon thread; maybe_start(request, tender_id, stage) is the
+      ONE entry point routes call — it no-ops unless stage=="qualified", refuses a duplicate
+      start while a run is live (is_running, STALE_AFTER=1800s so a crashed thread cannot wedge
+      the button forever), and writes the "running" row BEFORE spawning so a double-click cannot
+      race. Table qualify_runs(tender_id, account_id PK, status running|done|failed, step,
+      error, started_at, finished_at) in engine/db.py.
+    Web wiring: routes_inbox.inbox_stage and routes_tender.tender_save call qualify.maybe_start
+      after set_stage; POST /app/tender/{id}/requalify re-runs on demand (the "Re-analyse"
+      button). routes_tender._analysis_strip renders the status card (running: step label + the
+      page auto-refreshes via a <meta http-equiv=refresh> injected through layout.render's new
+      head_extra param — still no JS anywhere; failed: error + Re-analyse; done: finished-at +
+      Re-analyse). request.state.db_path was added in web/context.py for the thread spawn.
+    Cost note: one full run = extract (haiku, docs) + applicability (sonnet by default) +
+      suppliers (haiku) + verify per [23]; deliberate — the user explicitly asked for this
+      tender. llm_cache makes an unchanged re-run nearly free.
+    Suppliers stores NOTHING when the extraction has no equipment list (status
+      no_requirements) — the step trace records it; that is not a bug.
+    Tests: tests/test_qualify.py (runner walks stages, overwrite-not-duplicate, double-click
+      guard, staleness, requalify route, page strips).
+    SEND: workflows/qualify.py + web/user/routes_tender.py + web/user/routes_inbox.py
+      (+ engine/db.py for the table, web/user/layout.py for head_extra, web/context.py).
 
 [20] INSTALL VERIFIER
     verify_install.py (repo root, plain stdlib, run with the SERVER's python: `.venv/bin/python verify_install.py`

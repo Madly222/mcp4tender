@@ -63,6 +63,7 @@ def add_context_middleware(app, db_path):
         conn, store = _open(db_path)
         request.state.conn = conn
         request.state.store = store
+        request.state.db_path = db_path
         request.state.readonly = bool(store.get("web.read_only", False))
         request.state.account = None
         try:

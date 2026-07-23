@@ -6,12 +6,12 @@ from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from engine.dateparse import humanize
-from web.render import _e, _loose
+from web.render import _e, _loose, _ts
 from web.user import cards
 from web.user.counts import nav_counts
 from web.user.icons import icon
 from web.user.layout import render
-from workflows import work
+from workflows import qualify, work
 
 router = APIRouter()
 
@@ -217,6 +217,28 @@ def _decision(row, info, back):
             'It never changes the tender itself.</div></div>')
 
 
+def _analysis_strip(row, run, readonly):
+    rerun = "" if readonly else (
+        f'<form method="post" action="/app/tender/{row["id"]}/requalify" '
+        'style="display:inline"><button class="btn ghost">Re-analyse</button></form>')
+    if run is None:
+        return ""
+    status = run.get("status")
+    if status == "running":
+        label = qualify.STEP_LABELS.get(run.get("step") or "", run.get("step") or "")
+        return ('<div class="card"><div class="card-b">'
+                f'<span class="chip acc">Analysing…</span> {_e(label)}. '
+                'This page refreshes on its own.</div></div><div class="gap"></div>')
+    if status == "failed":
+        return ('<div class="card"><div class="card-b">'
+                f'<span class="chip bad">Analysis failed</span> {_e(run.get("error") or "")} '
+                f'{rerun}</div></div><div class="gap"></div>')
+    when = _ts(run.get("finished_at")) if run.get("finished_at") else ""
+    return ('<div class="card"><div class="card-b">'
+            f'<span class="chip ok">Analysed</span> Full analysis finished {_e(when)}. '
+            f'{rerun}</div></div><div class="gap"></div>')
+
+
 @router.post("/app/tender/{tender_id}/save")
 def tender_save(request: Request, tender_id: int, stage: str = Form("qualified"),
                 note: str = Form(""), back: str = Form("")):
@@ -226,8 +248,21 @@ def tender_save(request: Request, tender_id: int, stage: str = Form("qualified")
     try:
         work.set_stage(request.state.conn, tender_id, work.account_id(request), stage,
                        note=note.strip())
+        qualify.maybe_start(request, tender_id, stage)
     except ValueError:
         pass
+    return RedirectResponse(target, status_code=303)
+
+
+@router.post("/app/tender/{tender_id}/requalify")
+def tender_requalify(request: Request, tender_id: int):
+    target = f"/app/tender/{tender_id}"
+    if request.state.store.get("web.read_only"):
+        return RedirectResponse(target, status_code=303)
+    if request.state.conn.execute(
+            "SELECT 1 FROM tenders WHERE id=?", (tender_id,)).fetchone() is None:
+        raise HTTPException(status_code=404, detail="No such tender")
+    qualify.maybe_start(request, tender_id, "qualified")
     return RedirectResponse(target, status_code=303)
 
 
@@ -244,7 +279,9 @@ def tender(request: Request, tender_id: int):
     back = f"/app/tender/{tender_id}"
 
     portal = cards.portal_of(store)
-    left = _verdict_card(row) + '<div class="gap"></div>' + _extraction(row)
+    run = qualify.status_of(conn, row["id"], acct_id)
+    strip = _analysis_strip(row, run, request.state.readonly)
+    left = strip + _verdict_card(row) + '<div class="gap"></div>' + _extraction(row)
     costing = _costing(row)
     if costing:
         left += '<div class="gap"></div>' + costing
@@ -254,5 +291,7 @@ def tender(request: Request, tender_id: int):
 
     heading = (nj.get("title") or "(untitled)")[:110]
     lede = f'{nj.get("buyer") or ""} · {work.LABELS[stage]}'
+    refresh = '<meta http-equiv="refresh" content="5">' \
+        if run and run.get("status") == "running" else ""
     return render(request, heading[:40], body, heading=heading, lede=lede,
-                  counts=nav_counts(conn, store, acct_id))
+                  counts=nav_counts(conn, store, acct_id), head_extra=refresh)
