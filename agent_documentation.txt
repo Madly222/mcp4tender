@@ -141,7 +141,8 @@ COMPONENT MAP
   pings get answered from llm_cache forever), classify_api_error, llm_status, collect_issues,
   spend helpers from stage_runs.
 
-[SUPPORT] engine/dateparse.py — THE date entry point (RO+RU months, ISO, DD.MM.YYYY; parse_date,
+[SUPPORT] engine/dateparse.py — THE date entry point (RO+RU+EN months incl. "September 12, 2026"
+  and ordinal suffixes 1st/2nd/3rd/12th, ISO, DD.MM.YYYY; parse_date,
   day_end_ts = 23:59:59 of the day — ALL deadline math goes through it, midnight math caused a
   live off-by-one). engine/lifecycle.py archive_reason/collect_ceiling. engine/secrets.py
   (.env-backed; get/set_api_key, read_env/write_env_var, mask). engine/documents.py (pymupdf).
