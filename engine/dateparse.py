@@ -21,7 +21,7 @@ _add_months(["mai"], 5)
 _add_months(["iunie", "iun"], 6)
 _add_months(["iulie", "iul"], 7)
 _add_months(["august", "aug"], 8)
-_add_months(["septembrie", "sept", "sep"], 9)
+_add_months(["septembrie", "septembre", "september", "sept", "sep"], 9)
 _add_months(["octombrie", "oct"], 10)
 _add_months(["noiembrie", "noi", "nov"], 11)
 _add_months(["decembrie", "dec"], 12)
@@ -62,6 +62,7 @@ _ISO_RE = re.compile(
 _NUM_RE = re.compile(r"\b(\d{1,2})[./-](\d{1,2})[./-](\d{4})\b")
 _YMD_RE = re.compile(r"\b(\d{4})[./](\d{1,2})[./](\d{1,2})\b")
 
+_ORDINAL_RE = re.compile(r"(?<=\d)(st|nd|rd|th)\b")
 _MONTH_ALT = "|".join(sorted(_MONTHS, key=len, reverse=True))
 _TXT_DMY_RE = re.compile(r"\b(\d{1,2})\s+(?:de\s+)?(" + _MONTH_ALT + r")\.?\s+(?:de\s+)?(\d{4})",
                          re.I)
@@ -191,6 +192,7 @@ def parse(value, tzname=DEFAULT_TZ, dayfirst=True):
     if not s:
         return DateInfo()
     low = s.lower().translate(_DIACRITICS)
+    low = _ORDINAL_RE.sub("", low)
     for fn in (lambda: _parse_iso(s, tzname),
                lambda: _parse_textual(low),
                lambda: _parse_numeric(low, dayfirst)):

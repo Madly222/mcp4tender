@@ -99,18 +99,24 @@ def sites_probe(request: Request, id: str = Form(...)):
 
 
 @router.post("/app/settings/sites/settings")
-def sites_settings(request: Request, id: str = Form(...), batch_size: str = Form("30")):
+def sites_settings(request: Request, id: str = Form(...), batch_size: str = Form("30"),
+                   date_order: str = Form("")):
     if request.state.readonly:
         return _redir_sites(err="read-only mode")
     try:
         n = max(1, min(1000, int(batch_size)))
     except (TypeError, ValueError):
         n = 30
+    order = date_order if date_order in ("dmy", "mdy") else ""
     store = request.state.store
     lst = list(store.get("sites.tenders", []) or [])
     for s in lst:
         if s.get("id") == id:
             s["batch_size"] = n
+            if order:
+                s["date_order"] = order
+            elif "date_order" in s:
+                s.pop("date_order")
     store.set("sites.tenders", lst, actor="web", note="set batch via web")
     return _redir_sites(msg=f"batch set: {n} tenders")
 

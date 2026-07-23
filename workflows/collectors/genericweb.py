@@ -185,7 +185,12 @@ def _tender_age_days(date_str):
     return (dt.datetime.now(dt.timezone.utc).date() - d).days
 
 
+def _dayfirst(site):
+    return str(site.get("date_order") or "dmy").lower() != "mdy"
+
+
 def _normalize_item(site, item):
+    df = _dayfirst(site)
     url = item.get("url")
     title = item.get("title")
     fmt = None
@@ -209,11 +214,11 @@ def _normalize_item(site, item):
         "procurement_method": None,
         "main_category": None,
         "cpv": [],
-        "deadline": normalize_field(item.get("deadline")),
+        "deadline": normalize_field(item.get("deadline"), dayfirst=df),
         "deadline_raw": item.get("deadline"),
-        "enquiry_deadline": normalize_field(item.get("enquiry_deadline")),
+        "enquiry_deadline": normalize_field(item.get("enquiry_deadline"), dayfirst=df),
         "enquiry_deadline_raw": item.get("enquiry_deadline"),
-        "publication_date": normalize_field(item.get("date")),
+        "publication_date": normalize_field(item.get("date"), dayfirst=df),
         "published_raw": item.get("date"),
         "documents": docs,
         "date": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -515,9 +520,10 @@ class GenericWebCollector(Collector):
                     if not isinstance(t, dict) or not t.get("title"):
                         continue
                     if max_age and max_age > 0:
-                        reason = archive_reason(parse_date(t.get("date")),
-                                                parse_date(t.get("deadline")),
-                                                archive_days=max_age)
+                        reason = archive_reason(
+                            parse_date(t.get("date"), dayfirst=_dayfirst(site)),
+                            parse_date(t.get("deadline"), dayfirst=_dayfirst(site)),
+                            archive_days=max_age)
                         if reason:
                             too_old += 1
                             site_too_old += 1
