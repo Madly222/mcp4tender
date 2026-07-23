@@ -113,20 +113,27 @@ def costs_page(request: Request):
     labels = {str(s.get("id")): s.get("label") or s.get("url") or s.get("id")
               for s in (store.get("sites.tenders", []) or []) if isinstance(s, dict)}
     site_rows = [
-        (f'<tr><td>{_e(labels.get(r["site_id"], r["site_id"]))}</td>'
+        (f'<tr><td><a style="color:var(--acc)" href="/app/costs/calls?site_id='
+         f'{_e(r["site_id"])}">{_e(labels.get(r["site_id"], r["site_id"]))}</a></td>'
          f'<td class="num">{r["n"]}</td><td class="num">{r["h"]}</td>'
+         f'<td class="num">{r["itok"]}</td><td class="num">{r["otok"]}</td>'
          f'<td class="num"><b>{_money(r["c"])}</b></td></tr>')
         for r in conn.execute(
             "SELECT site_id, COUNT(*) n, COALESCE(SUM(cached),0) h, "
+            "COALESCE(SUM(input_tokens),0) itok, COALESCE(SUM(output_tokens),0) otok, "
             "COALESCE(SUM(cost),0) c FROM llm_spend WHERE site_id IS NOT NULL "
             "GROUP BY site_id ORDER BY c DESC")]
 
     tender_rows = [
         (f'<tr><td>{_tender_cell(conn, r["tender_id"])}</td>'
          f'<td class="num">{r["n"]}</td><td class="num">{r["h"]}</td>'
-         f'<td class="num"><b>{_money(r["c"])}</b></td></tr>')
+         f'<td class="num">{r["itok"]}</td><td class="num">{r["otok"]}</td>'
+         f'<td class="num"><b>{_money(r["c"])}</b></td>'
+         f'<td><a class="chip plain" href="/app/costs/calls?tender_id='
+         f'{r["tender_id"]}">calls</a></td></tr>')
         for r in conn.execute(
             "SELECT tender_id, COUNT(*) n, COALESCE(SUM(cached),0) h, "
+            "COALESCE(SUM(input_tokens),0) itok, COALESCE(SUM(output_tokens),0) otok, "
             "COALESCE(SUM(cost),0) c FROM llm_spend WHERE tender_id IS NOT NULL "
             "GROUP BY tender_id ORDER BY c DESC LIMIT 25")]
 
@@ -140,14 +147,100 @@ def costs_page(request: Request):
                            "<th>Stage</th><th>Model</th><th>Calls</th><th>Cached</th>"
                            "<th>Tokens in</th><th>Tokens out</th><th>Spent</th>", stage_rows)
             + _spend_table("By site (collection)",
-                           "<th>Site</th><th>Calls</th><th>Cached</th><th>Spent</th>",
-                           site_rows)
+                           "<th>Site</th><th>Calls</th><th>Cached</th><th>Tokens in</th>"
+                           "<th>Tokens out</th><th>Spent</th>", site_rows)
             + _spend_table("Top tenders (analysis)",
-                           "<th>Tender</th><th>Calls</th><th>Cached</th><th>Spent</th>",
-                           tender_rows)
+                           "<th>Tender</th><th>Calls</th><th>Cached</th><th>Tokens in</th>"
+                           "<th>Tokens out</th><th>Spent</th><th></th>", tender_rows)
             + empty)
+    every = ('<a class="btn ghost sm" href="/app/costs/calls">Every call</a> '
+             '<a class="btn ghost sm" href="/app/costs/calls?sort=cost">'
+             "Most expensive calls</a>")
     return render(request, "Spending", body, heading="AI spending",
-                  heading_icon="sliders",
+                  heading_icon="sliders", actions=every,
                   lede="Every model call in dollars — by stage, by site, by tender. "
                        "For finding leaks, not for accounting.",
+                  counts=nav_counts(conn, store, work.account_id(request)))
+
+
+def _sort_links(base_qs, sort):
+    parts = []
+    for key, lbl in (("time", "Newest first"), ("cost", "Most expensive first"),
+                     ("tokens", "Most tokens in first")):
+        if key == sort:
+            parts.append(f'<b style="margin-left:8px">{lbl}</b>')
+        else:
+            qs = f"{base_qs}&sort={key}" if base_qs else f"sort={key}"
+            parts.append(f'<a style="margin-left:8px;color:var(--acc)" '
+                         f'href="/app/costs/calls?{qs}">{lbl}</a>')
+    return ('<div class="card"><div class="card-b" style="padding:10px 16px">'
+            '<span class="mut" style="font-size:12px">Sort:</span> '
+            + " ".join(parts) + "</div></div><div class=\"gap\"></div>")
+
+
+@router.get("/app/costs/calls")
+def costs_calls(request: Request, tender_id: int = 0, site_id: str = "",
+                sort: str = "time"):
+    conn, store = request.state.conn, request.state.store
+    where, args, crumbs, base_qs = [], [], [], ""
+    if tender_id:
+        where.append("tender_id=?")
+        args.append(tender_id)
+        base_qs = f"tender_id={tender_id}"
+        crumbs.append(f"tender {_tender_cell(conn, tender_id)}")
+    if site_id:
+        where.append("site_id=?")
+        args.append(site_id)
+        base_qs = f"site_id={_e(site_id)}"
+        labels = {str(s.get("id")): s.get("label") or s.get("url") or s.get("id")
+                  for s in (store.get("sites.tenders", []) or []) if isinstance(s, dict)}
+        crumbs.append(f"site <b>{_e(labels.get(site_id, site_id))}</b>")
+    order = {"cost": "cost DESC, ts DESC", "tokens": "input_tokens DESC, ts DESC",
+             "time": "ts DESC"}.get(sort, "ts DESC")
+    sql = ("SELECT ts, stage, model, input_tokens, output_tokens, cost, cached, "
+           "tender_id, site_id FROM llm_spend")
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += f" ORDER BY {order} LIMIT 200"
+    rows = conn.execute(sql, tuple(args)).fetchall()
+    if not rows:
+        table = ('<div class="card"><div class="empty">No calls recorded here yet.'
+                 "</div></div>")
+    else:
+        body_rows = []
+        for r in rows:
+            if r["tender_id"]:
+                belongs = _tender_cell(conn, r["tender_id"])
+            elif r["site_id"]:
+                belongs = (f'<a style="color:var(--acc)" href="/app/costs/calls?site_id='
+                           f'{_e(r["site_id"])}">site {_e(r["site_id"])}</a>')
+            else:
+                belongs = "—"
+            cached = '<span class="chip ok">cache</span>' if r["cached"] else ""
+            body_rows.append(
+                "<tr>"
+                f'<td class="mut" style="white-space:nowrap">{_e(_ts(r["ts"]))}</td>'
+                f'<td>{_e(r["stage"] or "?")}</td><td>{_e(r["model"] or "")}</td>'
+                f"<td>{belongs}</td>"
+                f'<td class="num">{r["input_tokens"]}</td>'
+                f'<td class="num">{r["output_tokens"]}</td>'
+                f"<td>{cached}</td>"
+                f'<td class="num"><b>{_money(r["cost"] or 0)}</b></td></tr>')
+        table = ('<div class="card"><div class="tbl-wrap"><table><thead><tr>'
+                 "<th>When</th><th>Stage</th><th>Model</th><th>Belongs to</th>"
+                 "<th>Tokens in</th><th>Tokens out</th><th></th><th>Cost</th>"
+                 f'</tr></thead><tbody>{"".join(body_rows)}</tbody></table></div>'
+                 "</div>")
+    head = ""
+    if crumbs:
+        head = ('<div class="card"><div class="card-b" style="padding:10px 16px">'
+                'Showing calls for ' + ", ".join(crumbs)
+                + ' · <a style="color:var(--acc)" href="/app/costs/calls">show all'
+                "</a></div></div><div class=\"gap\"></div>")
+    lede = ("One row per model call — newest 200 shown. Filter from the tables on AI "
+            "spending, or sort by cost to see the expensive ones.")
+    crumb = '<a class="btn ghost sm" href="/app/costs">AI spending</a>'
+    return render(request, "Model calls", head + _sort_links(base_qs, sort) + table,
+                  heading="Model calls", heading_icon="sliders", lede=lede,
+                  actions=crumb,
                   counts=nav_counts(conn, store, work.account_id(request)))

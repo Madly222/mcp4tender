@@ -287,7 +287,9 @@ def tender(request: Request, tender_id: int):
     if sp and sp["n"]:
         val = f"${sp['c']:.4f}" if sp["c"] < 0.1 else f"${sp['c']:.2f}"
         spend = (f'<div class="pref-help" style="margin:0 0 10px">AI spend on this tender: '
-                 f'<b class="num">{val}</b> · {sp["n"]} calls, {sp["h"]} from cache · '
+                 f'<b class="num">{val}</b> · '
+                 f'<a href="/app/costs/calls?tender_id={row["id"]}" '
+                 f'style="color:var(--acc)">{sp["n"]} calls</a>, {sp["h"]} from cache · '
                  '<a href="/app/costs" style="color:var(--acc)">all spending</a></div>')
     strip = spend + _analysis_strip(row, run, request.state.readonly)
     left = strip + _verdict_card(row) + '<div class="gap"></div>' + _extraction(row)
