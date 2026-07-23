@@ -152,6 +152,16 @@ CREATE TABLE IF NOT EXISTS tender_work (
     PRIMARY KEY (tender_id, account_id)
 );
 CREATE INDEX IF NOT EXISTS idx_tender_work_stage ON tender_work(account_id, stage);
+CREATE TABLE IF NOT EXISTS qualify_runs (
+    tender_id INTEGER NOT NULL REFERENCES tenders(id) ON DELETE CASCADE,
+    account_id INTEGER NOT NULL DEFAULT 0,
+    status TEXT,
+    step TEXT,
+    error TEXT,
+    started_at REAL,
+    finished_at REAL,
+    PRIMARY KEY (tender_id, account_id)
+);
 CREATE TABLE IF NOT EXISTS account_settings (
     account_id INTEGER NOT NULL,
     key TEXT NOT NULL,

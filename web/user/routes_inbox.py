@@ -10,7 +10,7 @@ from web.user import cards, lifecycle
 from web.user.counts import nav_counts
 from web.user.icons import icon
 from web.user.layout import render
-from workflows import work
+from workflows import qualify, work
 from workflows.segments import partition
 
 router = APIRouter()
@@ -82,6 +82,7 @@ def inbox_stage(request: Request, tender_id: int, stage: str = Form("qualified")
         return RedirectResponse(back, status_code=303)
     try:
         work.set_stage(request.state.conn, tender_id, work.account_id(request), stage)
+        qualify.maybe_start(request, tender_id, stage)
     except ValueError:
         pass
     return RedirectResponse(back if back.startswith("/app") else "/app/inbox", status_code=303)

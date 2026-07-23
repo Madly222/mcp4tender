@@ -74,7 +74,7 @@ def _who(request):
 
 
 def render(request, title, body, lede="", heading=None, heading_icon=None,
-           actions="", counts=None):
+           actions="", counts=None, head_extra=""):
     store = request.state.store
     brand = _e(store.get("web.title", "TenderEngine"))
     acct = getattr(request.state, "account", None)
@@ -93,7 +93,7 @@ def render(request, title, body, lede="", heading=None, heading_icon=None,
         f'<!doctype html><html lang=en data-theme="{_theme(request)}">'
         "<head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
-        f"<title>{brand} &middot; {_e(title)}</title>{_links()}</head><body>"
+        f"<title>{brand} &middot; {_e(title)}</title>{_links()}{head_extra}</head><body>"
         '<input type="checkbox" id="navtoggle" class="nav-toggle" aria-label="Menu">'
         '<div class="shell">'
         '<label for="navtoggle" class="nav-scrim"></label><aside>'
