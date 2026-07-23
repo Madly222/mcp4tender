@@ -13,6 +13,12 @@ HANDLED = {
     "schedule": ("schedule.jobs", "schedule.timezone"),
     "suppliers": ("suppliers.catalog",),
     "sources": ("sites.tenders", "sites.partners", "sources.rank"),
+    "sending": ("notify.email.enabled", "notify.email.host", "notify.email.port",
+                "notify.email.tls", "notify.email.login", "notify.email.from",
+                "notify.email.to", "notify.telegram.enabled", "notify.telegram.chat_id"),
+    "message": ("notify.message.block_text", "notify.message.block_analysis",
+                "notify.text.buyer", "notify.text.value", "notify.text.deadline",
+                "notify.text.verdict", "notify.text.rating", "notify.text.link"),
 }
 
 
@@ -265,33 +271,9 @@ def catalog_form(store, request=None):
             '<button class="btn">Save catalog</button></div></form>')
 
 
-def notify_form(store, request=None):
-    from workflows.notify import smtp_password, tg_token
-    from engine.secrets import mask
-    pw = smtp_password()
-    tok = tg_token()
-    pw_state = (f'<span class="chip ok">set</span>' if pw
-                else '<span class="chip bad">missing</span>')
-    tok_state = (f'<span class="chip ok">set</span>'
-                 f'<span class="t-doc-n mono">{_e(mask(tok))}</span>' if tok
-                 else '<span class="chip bad">missing</span>')
-    return ('<form method="post" action="/app/settings/notify/save" class="card">'
-            f'<div class="card-h">{icon("send")}<h2>Sending credentials</h2></div>'
-            '<div class="card-b">'
-            '<p class="mut" style="margin:0 0 12px;line-height:1.6">These two secrets live in '
-            'this instance\'s <span class="mono">.env</span>, never in the config. Leave a '
-            'field blank to keep its current value. The server, addresses and chat ID are the '
-            'plain settings below; the checkboxes there decide which channel the Send button '
-            'uses — tick both and it sends to both.</p>'
-            f'{_field("Mail password", "the password for the mail login below " + ("(currently set)" if pw else "(not set yet)"), _secret("smtp_password"))}'
-            f'{_field("Telegram bot token", "from @BotFather; the bot must be in the group and allowed to post", _secret("tg_token"))}'
-            f'<div class="pref-help">mail password: {pw_state} · bot token: {tok_state}</div>'
-            "</div>"
-            '<div class="fb" style="border-top:1px solid var(--line);gap:8px">'
-            '<button class="btn">Save secrets</button>'
-            '<button class="btn ghost" formaction="/app/settings/notify/test">'
-            "Send a test now</button>"
-            "</div></form>")
+def _sw(name, on, label):
+    return (f'<label class="switch"><input type="checkbox" name="{name}"'
+            f'{" checked" if on else ""}><span>{_e(label)}</span></label>')
 
 
 def _secret(name):
@@ -299,7 +281,104 @@ def _secret(name):
             'autocomplete="off" placeholder="unchanged">')
 
 
+def notify_form(store, request=None):
+    from workflows.notify import email_config, smtp_password, telegram_config, tg_token
+    from engine.secrets import mask
+    em = email_config(store)
+    tg = telegram_config(store)
+    pw = smtp_password()
+    tok = tg_token()
+    pw_chip = ('<span class="chip ok">set</span>' if pw
+               else '<span class="chip bad">missing</span>')
+    tok_chip = (f'<span class="chip ok">set</span>'
+                f'<span class="t-doc-n mono">{_e(mask(tok))}</span>' if tok
+                else '<span class="chip bad">missing</span>')
+    email_card = (
+        f'<div class="card-h">{icon("send")}<h2>Email</h2><div class="spacer"></div>'
+        f'{_sw("email_enabled", em["enabled"], "send by email")}</div>'
+        '<div class="card-b">'
+        '<p class="mut" style="margin:0 0 12px;line-height:1.6">Your own mail server sends '
+        "these — nothing goes through anyone else. Ask whoever runs your mail for the four "
+        'server values if unsure.</p>'
+        + _field("Mail server", "host name or IP of the server that sends your mail",
+                 _txt("email_host", em["host"]))
+        + _field("Port", "587 is the usual one; 25 for an internal relay",
+                 _num("email_port", em["port"]))
+        + _field("Secure the connection (STARTTLS)",
+                 "leave on unless your relay is plain port 25",
+                 _sw("email_tls", em["tls"], "encrypt with STARTTLS"))
+        + _field("Login", "the account name for the server; leave empty if your relay "
+                 "needs no login", _txt("email_login", em["login"]))
+        + _field("Password", "stored in this instance's .env, never in the config; blank "
+                 "keeps the current one", _secret("smtp_password"))
+        + f'<div class="pref-help">password now: {pw_chip}</div>'
+        + _field("Send from", "the address the message comes from, e.g. "
+                 "tenders@yourcompany.md", _txt("email_from", em["sender"]))
+        + _field("Send to", "who receives it — separate several addresses with commas",
+                 _txt("email_to", ", ".join(em["to"])))
+        + "</div>")
+    tg_card = (
+        f'<div class="card-h">{icon("send")}<h2>Telegram</h2><div class="spacer"></div>'
+        f'{_sw("tg_enabled", tg["enabled"], "send to Telegram")}</div>'
+        '<div class="card-b">'
+        '<p class="mut" style="margin:0 0 12px;line-height:1.6">One bot covers both ways of '
+        "posting: message a person, or add the bot to a group and it posts there. Make the "
+        'bot with @BotFather, add it to your group, and put the group\'s chat ID below.</p>'
+        + _field("Bot token", "from @BotFather, looks like 123456:ABC…; stored in .env; "
+                 "blank keeps the current one", _secret("tg_token"))
+        + f'<div class="pref-help">token now: {tok_chip}</div>'
+        + _field("Chat or group ID", "a group ID usually starts with -100…; forward any "
+                 "group message to @userinfobot to learn it",
+                 _txt("tg_chat_id", tg["chat_id"]))
+        + "</div>")
+    return ('<form method="post" action="/app/settings/notify/save" class="card">'
+            + email_card
+            + '<div class="card-b" style="border-top:1px solid var(--line)"></div>'
+            + tg_card +
+            '<div class="fb" style="border-top:1px solid var(--line);gap:8px">'
+            '<button class="btn">Save</button>'
+            '<button class="btn ghost" formaction="/app/settings/notify/test">'
+            "Send a test now</button>"
+            '<span class="mut" style="font-size:12px">the test really sends the newest '
+            "collected tender to every channel that is on</span>"
+            "</div></form>")
+
+
+def message_form(store, request=None):
+    from workflows.notify import message_options
+    o = message_options(store)
+    t = o["text"]
+    items = (("text_buyer", t["buyer"], "who is buying"),
+             ("text_value", t["value"], "the tender value"),
+             ("text_deadline", t["deadline"], "the submission deadline"),
+             ("text_verdict", t["verdict"], "the can-we-do-it verdict"),
+             ("text_rating", t["rating"], "the overall fit rating (0–100)"),
+             ("text_link", t["link"], "a link to the tender"))
+    boxes = "".join(f'<div style="margin:4px 0">{_sw(n, on, lbl)}</div>'
+                    for n, on, lbl in items)
+    return ('<form method="post" action="/app/settings/message/save" class="card">'
+            f'<div class="card-h">{icon("edit")}<h2>Blocks</h2></div>'
+            '<div class="card-b">'
+            '<p class="mut" style="margin:0 0 12px;line-height:1.6">The message is built from '
+            "blocks. Untick a block and it simply isn\'t sent; new blocks added later will "
+            'appear here with their own switch.</p>'
+            + _field("Short text block",
+                     "the few lines that arrive as the message itself",
+                     _sw("block_text", o["block_text"], "include the short text"))
+            + _field("Analysis report",
+                     "the full write-up as an attached file — verdict with reasoning, "
+                     "extracted requirements, catalog costing, document links",
+                     _sw("block_analysis", o["block_analysis"], "attach the analysis file"))
+            + '<div class="pref"><div class="pref-h"><label>Inside the short text</label></div>'
+            '<div class="pref-b" style="display:block">' + boxes + "</div>"
+            '<div class="pref-help">the tender\'s name always comes first; these choose what '
+            "follows it</div></div>"
+            "</div>"
+            '<div class="fb" style="border-top:1px solid var(--line)">'
+            '<button class="btn">Save</button></div></form>')
+
+
 FORMS = {"company": company_form, "relevance": keywords_form, "ai": apikey_form,
-         "sending": notify_form,
+         "sending": notify_form, "message": message_form,
          "schedule": schedule_form, "suppliers": catalog_form,
          "sources": sites_panel}

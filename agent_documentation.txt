@@ -999,8 +999,23 @@ COMPONENT MAP
         forms.notify_form is the hand-written card above the generated rows (FORMS["sending"]),
         with "Save secrets" + "Send a test now" (settings_ops.run_send_test sends the NEWEST
         collected tender through notify_tender for real — it says so on the button's help).
-      web/user/settings_meta.py gained section ("sending", prefix "notify"); every notify.* key
-        has a real label in web/user/labels.py (the labels test enforces this).
+      SETTINGS UX (Jul 23, third pass — Victor rejected the auto-generated flat rows as
+        unreadable): there are TWO sections now and NO generated rows for notify.* at all
+        (every key is in forms.HANDLED, so "Everything else here" never appears):
+        - /app/settings/sending "Sending results" -> forms.notify_form: an Email card (on/off
+          switch in the header, server/port/STARTTLS/login/password/from/to, every field with a
+          plain-words help line) and a Telegram card (on/off, bot token, chat ID with the
+          @userinfobot tip), one Save + the "Send a test now" button; posts to
+          /app/settings/notify/save -> settings_ops.save_notify_channels (plain fields to
+          config, non-empty secrets to .env, port validated).
+        - /app/settings/message "What the message says" -> forms.message_form: the block
+          switches + the six inside-the-text checkboxes; posts to /app/settings/message/save ->
+          settings_ops.save_message. Checkbox semantics: unchecked boxes are absent from the
+          form, so every save writes ALL the booleans.
+        settings_meta.section_of is now LONGEST-PREFIX match and prefixes may be dotted: the
+        "message" section claims ("notify.message", "notify.text"), "sending" keeps ("notify",).
+        Any future sub-family can be split out the same way without renaming config keys.
+        Labels for notify.* keys stay in labels.py (harmless, and the hub search uses them).
       web/user/routes_qualified.py -> POST /app/qualified/{id}/send + a msg/err flash strip on
         the page; routes at /app/settings/notify/{save,test}. Icon "send" added to icons.py.
     COMPOSABLE MESSAGE (Jul 23, second pass): the message is built from BLOCKS, each with an

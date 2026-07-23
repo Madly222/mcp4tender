@@ -27,6 +27,9 @@ SECTIONS = [
     ("sending", "Sending results", "send",
      "Where a tender's analysis goes when you press Send — your own mail server, a Telegram "
      "group via a bot, or both.", ("notify",)),
+    ("message", "What the message says", "edit",
+     "Build the message the Send button ships: which blocks it has and what the short text "
+     "mentions.", ("notify.message", "notify.text")),
     ("engine", "Engine internals", "alert",
      "Pipelines, retries, logging and the digest supervisor. Change with care.",
      ("runtime", "pipeline", "log", "supervisor", "dummy")),
@@ -42,11 +45,12 @@ def prefix_of(key):
 
 
 def section_of(key):
-    p = prefix_of(key)
+    best, best_len = None, -1
     for sid, _label, _icon, _blurb, prefixes in SECTIONS:
-        if p in prefixes:
-            return sid
-    return None
+        for pfx in prefixes:
+            if (key == pfx or key.startswith(pfx + ".")) and len(pfx) > best_len:
+                best, best_len = sid, len(pfx)
+    return best
 
 
 def is_admin_only(key):

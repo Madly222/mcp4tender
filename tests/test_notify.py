@@ -217,11 +217,47 @@ def test_settings_page_has_the_section(tmp_path):
     p, conn, store = _fresh(tmp_path, "n11.db")
     c = _login(p, conn)
     hub = c.get("/app/settings").text
-    assert "Sending results" in hub
+    assert "Sending results" in hub and "What the message says" in hub
     page = c.get("/app/settings/sending").text
-    assert "Sending credentials" in page
     assert "smtp_password" in page and "tg_token" in page
-    assert "Send by email" in page and "Telegram chat or group ID" in page
+    assert "Mail server" in page and "Chat or group ID" in page
+    assert "Everything else here" not in page
+    mpage = c.get("/app/settings/message").text
+    assert "Short text block" in mpage and "overall fit rating" in mpage
+    assert "Everything else here" not in mpage
+
+
+def test_saving_channels_and_message_via_forms(tmp_path):
+    p, conn, store = _fresh(tmp_path, "n18.db")
+    c = _login(p, conn)
+    r = c.post("/app/settings/notify/save",
+               data={"email_enabled": "on", "email_host": "10.0.0.5",
+                     "email_port": "587", "email_tls": "on",
+                     "email_login": "tender@rapidlink.md",
+                     "email_from": "tender@rapidlink.md",
+                     "email_to": "a@rapidlink.md, b@rapidlink.md",
+                     "tg_chat_id": "-100999"})
+    assert r.status_code == 303 and "saved=" in r.headers["location"]
+    store.reload()
+    assert store.get("notify.email.enabled") is True
+    assert store.get("notify.email.host") == "10.0.0.5"
+    assert store.get("notify.telegram.enabled") is False
+    assert store.get("notify.telegram.chat_id") == "-100999"
+    r = c.post("/app/settings/message/save",
+               data={"block_text": "on", "text_rating": "on"})
+    assert r.status_code == 303
+    store.reload()
+    assert store.get("notify.message.block_text") is True
+    assert store.get("notify.message.block_analysis") is False
+    assert store.get("notify.text.buyer") is False
+    assert store.get("notify.text.rating") is True
+
+
+def test_bad_port_is_rejected(tmp_path):
+    p, conn, store = _fresh(tmp_path, "n19.db")
+    c = _login(p, conn)
+    r = c.post("/app/settings/notify/save", data={"email_port": "99999"})
+    assert "err=" in r.headers["location"]
 
 
 def test_email_has_date_and_message_id(tmp_path):
@@ -327,6 +363,6 @@ def test_rating_in_report_and_settings_labels(tmp_path):
     msg = notify.build_message(store, conn, tid)
     assert "Overall fit:" in msg["content"].decode("utf-8")
     c = _login(p, conn)
-    page = c.get("/app/settings/sending").text
-    assert "Message: include the short text block" in page
-    assert "Text block: overall fit rating" in page
+    page = c.get("/app/settings/message").text
+    assert "include the short text" in page
+    assert "overall fit rating" in page

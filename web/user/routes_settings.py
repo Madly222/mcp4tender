@@ -194,9 +194,22 @@ async def notify_save(request: Request):
         return stop
     form = await request.form()
     try:
-        return _back("sending", msg=settings_ops.save_notify_secrets(form))
+        return _back("sending",
+                     msg=settings_ops.save_notify_channels(form, request.state.store))
     except settings_ops.SettingsError as ex:
         return _back("sending", err=str(ex))
+
+
+@router.post("/app/settings/message/save")
+async def message_save(request: Request):
+    stop = _guard(request, "message")
+    if stop:
+        return stop
+    form = await request.form()
+    try:
+        return _back("message", msg=settings_ops.save_message(form, request.state.store))
+    except settings_ops.SettingsError as ex:
+        return _back("message", err=str(ex))
 
 
 @router.post("/app/settings/notify/test")
