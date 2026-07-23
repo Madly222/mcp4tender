@@ -169,3 +169,59 @@ def test_qualified_sorts_by_deadline_default(tmp_path):
     assert page.index("T soon") < page.index("T late") < page.index("T nodl")
     page = c.get("/app/qualified?sort=new").text
     assert page.index("T late") < page.index("T nodl") < page.index("T soon")
+
+
+def _spend_row(conn, ts, stage, cost, itok, tender_id=None, site_id=None, cached=0):
+    conn.execute("INSERT INTO llm_spend(ts, stage, model, provider, input_tokens, "
+                 "output_tokens, cost, cached, tender_id, site_id) "
+                 "VALUES(?,?,?,?,?,?,?,?,?,?)",
+                 (ts, stage, "m", "anthropic", itok, 10, cost, cached, tender_id, site_id))
+    conn.commit()
+
+
+def test_calls_page_filters_by_tender(tmp_path):
+    p, conn, store = _fresh(tmp_path, "c7.db")
+    t1 = _add(conn, "a1", "2026-09-01", time.time())
+    t2 = _add(conn, "a2", "2026-09-01", time.time())
+    now = time.time()
+    _spend_row(conn, now - 30, "extract", 0.02, 5000, tender_id=t1)
+    _spend_row(conn, now - 20, "applicability", 0.10, 8000, tender_id=t1, cached=0)
+    _spend_row(conn, now - 10, "extract", 0.50, 90000, tender_id=t2)
+    _spend_row(conn, now - 5, "site_collect", 0.03, 3000, site_id="s1")
+    c = _login(p, conn)
+    page = c.get(f"/app/costs/calls?tender_id={t1}").text
+    assert page.count("<tr>") == 3
+    assert "T a1" in page and "T a2" not in page and "site s1" not in page
+    allpage = c.get("/app/costs/calls").text
+    assert allpage.count("<tr>") == 5
+
+
+def test_calls_page_sorts_by_cost_and_tokens(tmp_path):
+    p, conn, store = _fresh(tmp_path, "c8.db")
+    t1 = _add(conn, "a1", "2026-09-01", time.time())
+    now = time.time()
+    _spend_row(conn, now - 30, "cheap", 0.01, 100, tender_id=t1)
+    _spend_row(conn, now - 20, "pricey", 0.90, 200, tender_id=t1)
+    _spend_row(conn, now - 10, "fat", 0.05, 99000, tender_id=t1)
+    c = _login(p, conn)
+    page = c.get("/app/costs/calls?sort=cost").text
+    assert page.index("pricey") < page.index("fat") < page.index("cheap")
+    page = c.get("/app/costs/calls?sort=tokens").text
+    assert page.index("fat") < page.index("pricey") < page.index("cheap")
+    page = c.get("/app/costs/calls").text
+    assert page.index("fat") < page.index("pricey") < page.index("cheap")
+
+
+def test_costs_page_links_to_calls_and_tender_line_links(tmp_path):
+    p, conn, store = _fresh(tmp_path, "c9.db")
+    t1 = _add(conn, "a1", "2026-09-01", time.time())
+    store.set("sites.tenders", [{"id": "s1", "url": "https://a.md", "label": "Primaria"}])
+    _spend_row(conn, time.time(), "applicability", 0.12, 8000, tender_id=t1)
+    _spend_row(conn, time.time(), "site_collect", 0.05, 3000, site_id="s1")
+    c = _login(p, conn)
+    page = c.get("/app/costs").text
+    assert f"/app/costs/calls?tender_id={t1}" in page
+    assert "/app/costs/calls?site_id=s1" in page
+    assert "Most expensive calls" in page
+    tpage = c.get(f"/app/tender/{t1}").text
+    assert f"/app/costs/calls?tender_id={t1}" in tpage

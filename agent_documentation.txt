@@ -132,7 +132,10 @@ COMPONENT MAP
   recheck per tender). engine/alerts.py — recent() = stage_runs status=error + qualify_runs
   failed, last 7 days; friendly() translates credit/rate/auth/overload errors to plain fixes;
   unseen_count vs config alerts.seen_until. web/user/routes_alerts.py — /app/alerts (list + Mark
-  all read) and /app/costs (totals today/7d/30d/all, by stage+model, BY SITE, top tenders).
+  all read), /app/costs (totals today/7d/30d/all; by stage+model, by site, top tenders — all with
+  token in/out columns and links into the call journal) and /app/costs/calls — ONE ROW PER MODEL
+  CALL: filter ?tender_id= / ?site_id=, sort time|cost|tokens, newest 200. This is the leak-hunt
+  view Victor asked for ("all calls belonging to a tender; which calls were most expensive").
   Per-site spend chip on sources page; per-tender spend line on tender detail. engine/health.py —
   check_api_key (live uncached ping — analyze-now uses THIS, never gw.complete: identical-input
   pings get answered from llm_cache forever), classify_api_error, llm_status, collect_issues,
