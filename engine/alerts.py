@@ -22,6 +22,10 @@ def friendly(error):
         return "The Claude API is overloaded right now — retry later."
     if "authentication" in e or "invalid x-api-key" in e or "401" in e:
         return "The Claude API key is wrong or revoked — check Settings → AI."
+    if "expected str instance, dict found" in e:
+        return ("The controller model answered with structured objects where text was "
+                "expected — fixed in the Jul 23 update; press Retry failed on Analyze "
+                "to re-run these tenders.")
     return None
 
 
