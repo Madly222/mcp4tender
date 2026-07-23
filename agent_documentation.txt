@@ -11,7 +11,9 @@ EVERY setting as a human form (no raw JSON anywhere). Sites live at /app/setting
 has the lifecycle filter (open/closed/pending/awarded), a "Not open yet" page, the age-out bug is
 fixed (see [18g]), and the site Analyse/Test 500 is fixed (see [18i] — pushed, in main).
 SOURCE RANK + CROSS-SOURCE DEDUP are built ([21]), the tender RE-CHECK loop is built ([22]),
-the keep -> full-analysis journey is built ([24], first half of 16b — partners still pending),
+the keep -> full-analysis journey is built ([24], first half of 16b — partners still pending;
+Victor Jul 23: do NOT design partners yet, he does not know the shape himself),
+and SEND-TO-EMAIL/TELEGRAM from the Qualified tab is built ([25]),
 and a TOKEN-LEAK pass landed (see [23]) fixing stub-cache poisoning, the cached key ping on
 Analyze-now, wasted recheck calls, and adding a front-page hash gate to incremental collection.
 
@@ -966,6 +968,46 @@ COMPONENT MAP
       guard, staleness, requalify route, page strips).
     SEND: workflows/qualify.py + web/user/routes_tender.py + web/user/routes_inbox.py
       (+ engine/db.py for the table, web/user/layout.py for head_extra, web/context.py).
+
+[25] SEND A TENDER'S ANALYSIS (email / Telegram from the Qualified tab)
+    Purpose: the tab of processed tenders is /app/qualified (it already existed — tabs per work
+    stage). Each row now has a Send button (paper-plane icon, a formaction submit inside the
+    row's existing form — never nest a second <form> in those rows) that ships the tender's
+    ANALYSIS to email and/or Telegram, whichever channels are ENABLED in settings: both ticked =
+    both sent, one ticked = only that one, none = the button explains where to turn it on.
+    Files:
+      workflows/notify.py -> build_message(store,conn,tender_id) composes everything from the DB
+        with ZERO LLM calls (it is all already stored): a short text (title/buyer/value/deadline/
+        verdict/link) + a Markdown report file tender-<id>-analysis.md (facts, CPV, applicability
+        verdict with reasoning/matched/gaps/required_equipment, extracted requirements, catalog
+        costing with margin and per-line matches, tender document links). The tender link uses
+        web.render.source_url for mtender ocids, else nj["url"].
+        send_email(store,msg,password,smtp_cls) — stdlib smtplib+EmailMessage, STARTTLS if
+        notify.email.tls, login only if notify.email.login set (so an open relay on the LAN works
+        with no login), report attached. smtp_cls is injectable for tests.
+        send_telegram(store,msg,token,post) — Bot API sendMessage + sendDocument (hand-built
+        multipart, no new deps); one bot+chat_id covers both "post to a group" and "bot" — add
+        the bot to the group and paste the group's chat id. post is injectable for tests.
+        notify_tender(store,conn,tid,...) -> {status ok|partial|failed|off, detail "email sent;
+        telegram error: ..."} — sends to every enabled channel, never raises.
+      Config (config/defaults/160_notify.json, all editable at /app/settings/sending as
+        generated rows): notify.email.{enabled,host,port,tls,login,from,to} (to = comma list),
+        notify.telegram.{enabled,chat_id}.
+      SECRETS stay out of config, same rule as the API key: SMTP password ->
+        env/TENDERENGINE_SMTP_PASSWORD, bot token -> env/TENDERENGINE_TG_TOKEN, written to the
+        instance .env by settings_ops.save_notify_secrets (bot token must contain ":").
+        forms.notify_form is the hand-written card above the generated rows (FORMS["sending"]),
+        with "Save secrets" + "Send a test now" (settings_ops.run_send_test sends the NEWEST
+        collected tender through notify_tender for real — it says so on the button's help).
+      web/user/settings_meta.py gained section ("sending", prefix "notify"); every notify.* key
+        has a real label in web/user/labels.py (the labels test enforces this).
+      web/user/routes_qualified.py -> POST /app/qualified/{id}/send + a msg/err flash strip on
+        the page; routes at /app/settings/notify/{save,test}. Icon "send" added to icons.py.
+    Sandbox note: real SMTP/Telegram cannot be exercised here (network allowlist); everything is
+    tested through the injectable seams (FakeSMTP, post=lambda). Verify live delivery on the
+    server with the "Send a test now" button.
+    SEND: workflows/notify.py + web/user/routes_qualified.py + web/user/forms.py +
+      web/settings_ops.py (+ settings_meta.py/labels.py/icons.py, config 160_notify.json).
 
 [20] INSTALL VERIFIER
     verify_install.py (repo root, plain stdlib, run with the SERVER's python: `.venv/bin/python verify_install.py`

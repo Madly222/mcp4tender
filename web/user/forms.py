@@ -265,6 +265,41 @@ def catalog_form(store, request=None):
             '<button class="btn">Save catalog</button></div></form>')
 
 
+def notify_form(store, request=None):
+    from workflows.notify import smtp_password, tg_token
+    from engine.secrets import mask
+    pw = smtp_password()
+    tok = tg_token()
+    pw_state = (f'<span class="chip ok">set</span>' if pw
+                else '<span class="chip bad">missing</span>')
+    tok_state = (f'<span class="chip ok">set</span>'
+                 f'<span class="t-doc-n mono">{_e(mask(tok))}</span>' if tok
+                 else '<span class="chip bad">missing</span>')
+    return ('<form method="post" action="/app/settings/notify/save" class="card">'
+            f'<div class="card-h">{icon("send")}<h2>Sending credentials</h2></div>'
+            '<div class="card-b">'
+            '<p class="mut" style="margin:0 0 12px;line-height:1.6">These two secrets live in '
+            'this instance\'s <span class="mono">.env</span>, never in the config. Leave a '
+            'field blank to keep its current value. The server, addresses and chat ID are the '
+            'plain settings below; the checkboxes there decide which channel the Send button '
+            'uses — tick both and it sends to both.</p>'
+            f'{_field("Mail password", "the password for the mail login below " + ("(currently set)" if pw else "(not set yet)"), _secret("smtp_password"))}'
+            f'{_field("Telegram bot token", "from @BotFather; the bot must be in the group and allowed to post", _secret("tg_token"))}'
+            f'<div class="pref-help">mail password: {pw_state} · bot token: {tok_state}</div>'
+            "</div>"
+            '<div class="fb" style="border-top:1px solid var(--line);gap:8px">'
+            '<button class="btn">Save secrets</button>'
+            '<button class="btn ghost" formaction="/app/settings/notify/test">'
+            "Send a test now</button>"
+            "</div></form>")
+
+
+def _secret(name):
+    return (f'<input class="note-in mono" type="password" name="{name}" '
+            'autocomplete="off" placeholder="unchanged">')
+
+
 FORMS = {"company": company_form, "relevance": keywords_form, "ai": apikey_form,
+         "sending": notify_form,
          "schedule": schedule_form, "suppliers": catalog_form,
          "sources": sites_panel}

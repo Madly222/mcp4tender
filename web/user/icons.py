@@ -30,6 +30,7 @@ _PATHS = {
     "gear": '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>',
     "menu": '<path d="M3 6h18M3 12h18M3 18h18"/>',
     "bang": '<path d="M12 8v5M12 17h.01"/>',
+    "send": '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/>',
 }
 
 

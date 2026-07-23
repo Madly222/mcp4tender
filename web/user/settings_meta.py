@@ -24,6 +24,9 @@ SECTIONS = [
     ("lists", "List behaviour", "inbox",
      "Company defaults for what counts as new and when things archive. Each person can override "
      "these in Preferences.", ("results",)),
+    ("sending", "Sending results", "send",
+     "Where a tender's analysis goes when you press Send — your own mail server, a Telegram "
+     "group via a bot, or both.", ("notify",)),
     ("engine", "Engine internals", "alert",
      "Pipelines, retries, logging and the digest supervisor. Change with care.",
      ("runtime", "pipeline", "log", "supervisor", "dummy")),

@@ -187,6 +187,31 @@ async def keywords_save(request: Request):
         return _back("relevance", err=str(ex))
 
 
+@router.post("/app/settings/notify/save")
+async def notify_save(request: Request):
+    stop = _guard(request, "sending")
+    if stop:
+        return stop
+    form = await request.form()
+    try:
+        return _back("sending", msg=settings_ops.save_notify_secrets(form))
+    except settings_ops.SettingsError as ex:
+        return _back("sending", err=str(ex))
+
+
+@router.post("/app/settings/notify/test")
+async def notify_test(request: Request):
+    stop = _guard(request, "sending")
+    if stop:
+        return stop
+    try:
+        return _back("sending",
+                     msg=settings_ops.run_send_test(request.state.store,
+                                                    request.state.conn))
+    except settings_ops.SettingsError as ex:
+        return _back("sending", err=str(ex))
+
+
 @router.post("/app/settings/apikey/save")
 async def apikey_save(request: Request):
     stop = _guard(request, "ai")

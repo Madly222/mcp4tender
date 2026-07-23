@@ -270,3 +270,36 @@ def save_table(form, store, key, cols, actor="web"):
         raise SettingsError("nothing to save — at least one row is required")
     store.set(key, out, actor=actor, note=f"edit {key}")
     return f"saved {len(out)} row(s) in {key}"
+
+
+def save_notify_secrets(form):
+    from engine.secrets import write_env_var
+    from workflows.notify import SMTP_PASSWORD_VAR, TG_TOKEN_VAR
+    saved = []
+    smtp = (form.get("smtp_password") or "").strip()
+    tok = (form.get("tg_token") or "").strip()
+    if smtp:
+        write_env_var(SMTP_PASSWORD_VAR, smtp)
+        saved.append("mail password")
+    if tok:
+        if ":" not in tok:
+            raise SettingsError("that does not look like a bot token "
+                                "(expected 123456:ABC-DEF...)")
+        write_env_var(TG_TOKEN_VAR, tok)
+        saved.append("bot token")
+    if not saved:
+        return "nothing to save — both fields were empty"
+    return "saved " + " and ".join(saved)
+
+
+def run_send_test(store, conn):
+    from workflows import notify
+    on = notify.channels_on(store)
+    if not on["email"] and not on["telegram"]:
+        raise SettingsError("turn on email or Telegram below first, then test")
+    row = conn.execute("SELECT id FROM tenders ORDER BY id DESC LIMIT 1").fetchone()
+    if row is None:
+        raise SettingsError("collect at least one tender first — the test sends a real one")
+    res = notify.notify_tender(store, conn, row["id"])
+    return f"test send: {res['detail']}"
+
