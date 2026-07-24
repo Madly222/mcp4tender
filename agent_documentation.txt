@@ -8,7 +8,7 @@ PUBLIC repo — never write IPs, hostnames, ports, logins, tokens or anything lo
 
 STATE (2026-07-23)
 ------------------
-647 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
+649 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
 API + genericweb site crawler with detect funnel, feeds probed, scheduler), analysis pipeline
 (triage -> extract -> applicability -> suppliers, each verified by a controller pass), the whole
 user zone /app* (inbox with lifecycle filter, qualified with tabs+deadline sort, tender detail,
@@ -227,7 +227,12 @@ HARD-WON DECISIONS — DO NOT UNDO
   applicability_verify). Always build hint text via workflows/verify.hint_items — never a bare
   "; ".join over model-returned lists, here or in any new stage.
 - EMAIL: Date + Message-ID always (UBE rejection was live). Multi-recipient = comma list in
-  notify.email.to.
+  notify.email.to, parsed by notify._recipients — splits on comma/semicolon/newline and DEDUPES
+  case-insensitively. send_message derives the envelope from the To header, so one address listed
+  twice = the operator receives the mail twice ("Telegram once, email twice" was reported live).
+  send_email now returns "sent to N address(es)" so the banner shows the envelope size and this
+  class of bug is visible without reading headers. If the count says 1 and two copies still land,
+  the duplication is server-side (alias/forward): compare Delivered-To on the two copies.
 - NO RAW DATE EVER REACHES A HUMAN: stored values are normalized ISO ("2026-08-07T07:00:00Z");
   every render goes through engine.dateparse — humanize() for a full date (also converts the tz
   to Chisinau), day_month() for the two-line badge. Two live regressions came from skipping it:

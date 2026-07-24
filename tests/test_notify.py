@@ -142,7 +142,7 @@ def test_send_email_happy_path(tmp_path):
     FakeSMTP.sent = []
     msg = notify.build_message(store, conn, tid)
     out = notify.send_email(store, msg, password="secret", smtp_cls=FakeSMTP)
-    assert out == "sent"
+    assert out == "sent to 2 addresses"
     assert "tls" in FakeSMTP.sent
     assert ("login", "tenders@rapid.md", "secret") in FakeSMTP.sent
     assert any(x[0] == "msg" and "victor@rapid.md" in x[2] for x in FakeSMTP.sent
@@ -275,7 +275,8 @@ def test_email_has_date_and_message_id(tmp_path):
             headers["Message-ID"] = m["Message-ID"]
 
     msg = notify.build_message(store, conn, tid)
-    assert notify.send_email(store, msg, password="", smtp_cls=HeaderSMTP) == "sent"
+    assert notify.send_email(store, msg, password="", smtp_cls=HeaderSMTP) \
+        == "sent to 2 addresses"
     assert headers["Date"]
     assert headers["Message-ID"].endswith("@rapidlink.md>")
     conn.close()
@@ -323,7 +324,8 @@ def test_analysis_block_off_drops_attachment_and_document(tmp_path):
             got["attachments"] = len(list(m.iter_attachments()))
 
     msg = notify.build_message(store, conn, tid)
-    assert notify.send_email(store, msg, password="", smtp_cls=BodySMTP) == "sent"
+    assert notify.send_email(store, msg, password="", smtp_cls=BodySMTP) \
+        == "sent to 1 address"
     assert got["attachments"] == 0
     posts = []
     assert notify.send_telegram(store, msg, token="1:a",
@@ -385,4 +387,44 @@ def test_message_dates_are_human_not_raw_iso(tmp_path):
     assert "**Submission deadline:** 07.08.2026, 10:00" in md
     assert "**Enquiry deadline:** 01.08.2026, 12:30" in md
     assert "**Published:** 20.07.2026" in md
+    conn.close()
+
+
+def test_duplicate_recipients_collapse_to_one_delivery(tmp_path):
+    p, conn, store = _fresh(tmp_path, "n10.db")
+    tid = _add(conn, "y1")
+    store.set("notify.email.enabled", True)
+    store.set("notify.email.host", "mail.rapid.md")
+    store.set("notify.email.from", "tenders@rapid.md")
+    store.set("notify.email.to", "victor@rapid.md, Victor@Rapid.md ,victor@rapid.md")
+    assert notify.email_config(store)["to"] == ["victor@rapid.md"]
+    sent = []
+
+    class FakeSMTP:
+        def __init__(self, host, port, timeout=None):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def starttls(self):
+            pass
+
+        def send_message(self, m):
+            sent.append(m["To"])
+
+    msg = notify.build_message(store, conn, tid)
+    out = notify.send_email(store, msg, password="", smtp_cls=FakeSMTP)
+    assert out == "sent to 1 address"
+    assert sent == ["victor@rapid.md"]
+    conn.close()
+
+
+def test_semicolon_separated_recipients_are_split(tmp_path):
+    p, conn, store = _fresh(tmp_path, "n11.db")
+    store.set("notify.email.to", "a@rapid.md; b@rapid.md")
+    assert notify.email_config(store)["to"] == ["a@rapid.md", "b@rapid.md"]
     conn.close()
