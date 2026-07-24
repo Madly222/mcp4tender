@@ -248,3 +248,14 @@ def humanize(value, tzname=DEFAULT_TZ, dayfirst=True, with_time=True):
     if with_time and info.time:
         out += ", " + info.time
     return out
+
+
+_MON_ABBR = ("Jan", "Feb", "Mar", "Apr", "May", "Jun",
+             "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+
+
+def day_month(value, tzname=DEFAULT_TZ, dayfirst=True):
+    d = parse_date(value, tzname, dayfirst)
+    if d is None:
+        return ("--", "")
+    return ("%02d" % d.day, _MON_ABBR[d.month - 1])

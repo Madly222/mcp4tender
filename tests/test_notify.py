@@ -366,3 +366,23 @@ def test_rating_in_report_and_settings_labels(tmp_path):
     page = c.get("/app/settings/message").text
     assert "include the short text" in page
     assert "overall fit rating" in page
+
+
+def test_message_dates_are_human_not_raw_iso(tmp_path):
+    p, conn, store = _fresh(tmp_path, "n9.db")
+    tid = _add(conn, "z1", "Retea cu termen ISO")
+    nj = json.loads(conn.execute("SELECT normalized_json FROM tenders WHERE id=?",
+                                 (tid,)).fetchone()["normalized_json"])
+    nj["deadline"] = "2026-08-07T07:00:00Z"
+    nj["enquiry_deadline"] = "2026-08-01T09:30:00Z"
+    nj["publication_date"] = "2026-07-20"
+    conn.execute("UPDATE tenders SET normalized_json=? WHERE id=?", (json.dumps(nj), tid))
+    conn.commit()
+    msg = notify.build_message(store, conn, tid)
+    md = msg["content"].decode("utf-8")
+    assert "Deadline: 07.08.2026, 10:00" in msg["text"]
+    assert "2026-08-07T07:00:00Z" not in msg["text"] and "2026-08-07T07:00:00Z" not in md
+    assert "**Submission deadline:** 07.08.2026, 10:00" in md
+    assert "**Enquiry deadline:** 01.08.2026, 12:30" in md
+    assert "**Published:** 20.07.2026" in md
+    conn.close()

@@ -9,6 +9,7 @@ from email.message import EmailMessage
 from email.utils import formatdate, make_msgid
 from urllib import request as urlrequest
 
+from engine.dateparse import humanize
 from engine.secrets import read_env
 
 SMTP_PASSWORD_VAR = "TENDERENGINE_SMTP_PASSWORD"
@@ -104,6 +105,12 @@ def overall_rating(row, margin_min=0.15):
     return {"score": score, "label": label}
 
 
+def _fmt_dt(value):
+    if not value:
+        return ""
+    return humanize(value) or str(value)
+
+
 def _fmt_value(nj):
     v = nj.get("value_amount")
     if not v:
@@ -131,7 +138,7 @@ def build_message(store, conn, tender_id):
     if want["value"] and _fmt_value(nj):
         lines.append(f"Value: {_fmt_value(nj)}")
     if want["deadline"] and nj.get("deadline"):
-        lines.append(f"Deadline: {nj['deadline']}")
+        lines.append(f"Deadline: {_fmt_dt(nj['deadline'])}")
     if want["verdict"] and row["av_verdict"]:
         score = f" ({row['av_score']})" if row["av_score"] is not None else ""
         lines.append(f"Verdict: {row['av_verdict']}{score}")
@@ -147,9 +154,9 @@ def build_message(store, conn, tender_id):
         md.append("")
     facts = []
     for label, val in (("Buyer", nj.get("buyer")), ("Value", _fmt_value(nj)),
-                       ("Published", nj.get("publication_date") or nj.get("date")),
-                       ("Submission deadline", nj.get("deadline")),
-                       ("Enquiry deadline", nj.get("enquiry_deadline")),
+                       ("Published", _fmt_dt(nj.get("publication_date") or nj.get("date"))),
+                       ("Submission deadline", _fmt_dt(nj.get("deadline"))),
+                       ("Enquiry deadline", _fmt_dt(nj.get("enquiry_deadline"))),
                        ("Source", link)):
         if val:
             facts.append(f"- **{label}:** {val}")

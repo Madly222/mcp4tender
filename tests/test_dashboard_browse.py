@@ -104,3 +104,16 @@ def test_archive_empty_state(tmp_path, monkeypatch):
     _add(conn, "a1", "Inca deschis", dl_days=20)
     accounts.create(conn, "rl", "password1", role="admin"); conn.close()
     assert "archive is empty" in _login(p).get("/app/archive").text
+def test_closing_soon_badge_holds_day_and_month_only(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    p, conn = _fresh(tmp_path,"d6.db")
+    tid = _add(conn, "a1", "Echipament de retea", dl_days=5)
+    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    c = _login(p)
+    c.post(f"/app/qualified/{tid}/save", data={"stage": "in_progress", "back": "/app/qualified"})
+    h = c.get("/app").text
+    from engine.dateparse import day_month
+    day, mon = day_month(time.strftime("%Y-%m-%dT%H:%M:%S",
+                                       time.gmtime(time.time()+5*86400)))
+    assert f'<div class="dt"><b class="num">{day}</b><span>{mon}</span></div>' in h
+    assert '<div class="dt"><b class="num">%s.' % day not in h
