@@ -8,7 +8,7 @@ PUBLIC repo — never write IPs, hostnames, ports, logins, tokens or anything lo
 
 STATE (2026-07-23)
 ------------------
-631 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
+647 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
 API + genericweb site crawler with detect funnel, feeds probed, scheduler), analysis pipeline
 (triage -> extract -> applicability -> suppliers, each verified by a controller pass), the whole
 user zone /app* (inbox with lifecycle filter, qualified with tabs+deadline sort, tender detail,
@@ -144,7 +144,7 @@ COMPONENT MAP
 [SUPPORT] engine/dateparse.py — THE date entry point (RO+RU+EN months incl. "September 12, 2026"
   and ordinal suffixes 1st/2nd/3rd/12th, ISO, DD.MM.YYYY; parse_date,
   day_end_ts = 23:59:59 of the day — ALL deadline math goes through it, midnight math caused a
-  live off-by-one). engine/lifecycle.py archive_reason/collect_ceiling. engine/secrets.py
+  live off-by-one; humanize -> "07.08.2026, 10:00"; day_month -> ("27","Jul") for compact badges). engine/lifecycle.py archive_reason/collect_ceiling. engine/secrets.py
   (.env-backed; get/set_api_key, read_env/write_env_var, mask). engine/documents.py (pymupdf).
   engine/scheduler.py + workflows/collect_jobs.py — cron-ish schedule.jobs {kind:"collect",
   sources,days,at,analyze,enabled}; runs inside app.py serve / web process; incremental finds =>
@@ -228,6 +228,13 @@ HARD-WON DECISIONS — DO NOT UNDO
   "; ".join over model-returned lists, here or in any new stage.
 - EMAIL: Date + Message-ID always (UBE rejection was live). Multi-recipient = comma list in
   notify.email.to.
+- NO RAW DATE EVER REACHES A HUMAN: stored values are normalized ISO ("2026-08-07T07:00:00Z");
+  every render goes through engine.dateparse — humanize() for a full date (also converts the tz
+  to Chisinau), day_month() for the two-line badge. Two live regressions came from skipping it:
+  the notification text/report printed the ISO string, and the dashboard "Closing soon" badge fed
+  the whole "27.07.2026" into a 38px .dt box, so it painted over the tender title. .dt is now
+  clipped (overflow:hidden + ellipsis) so a long value can never overlap .mt again. notify uses
+  _fmt_dt (humanize, falls back to the raw string if unparseable) for deadline/enquiry/published.
 - MULTI-COMPANY IS SOLVED BY DEPLOYMENT, NOT SCHEMA: one instance per company = data dir + .env +
   systemd unit + port, ONE shared checkout (env TENDERENGINE_DB / TENDERENGINE_HOME; port from
   that instance's store). Do NOT add company_id to tenders/verdicts/suppliers/extractions; the

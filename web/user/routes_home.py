@@ -5,7 +5,7 @@ import time
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
-from engine.dateparse import day_end_ts, humanize
+from engine.dateparse import day_end_ts, day_month
 from web.render import _e
 from web.user import cards
 from web.user.counts import nav_counts
@@ -108,9 +108,7 @@ def _soon(openrows, now):
         for _ts, r in soon[:5]:
             nj = cards.nj_of(r)
             raw, _ = cards.deadline_of(r, nj)
-            parts = str(humanize(raw, with_time=False) or "").replace(",", " ").split()
-            day = parts[0] if parts else "--"
-            mon = parts[1][:3] if len(parts) > 1 else ""
+            day, mon = day_month(raw)
             items.append(f'<div class="mini"><div class="dt"><b class="num">{_e(day)}</b>'
                          f'<span>{_e(mon)}</span></div><div class="mt">'
                          f'<b>{_e((nj.get("title") or "(untitled)")[:90])}</b>'

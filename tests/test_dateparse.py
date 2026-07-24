@@ -2,7 +2,7 @@ from __future__ import annotations
 import datetime as dt, sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from engine.dateparse import parse, parse_date, to_iso, humanize
+from engine.dateparse import parse, parse_date, to_iso, humanize, day_month
 
 D = dt.date
 
@@ -107,3 +107,10 @@ def test_to_iso_and_humanize():
 def test_accepts_date_objects():
     assert parse_date(D(2026, 5, 4)) == D(2026, 5, 4)
     assert parse(dt.datetime(2026, 5, 4, 8, 30)).time == "08:30"
+
+def test_day_month_splits_for_the_date_badge():
+    assert day_month("2026-07-27T07:00:00Z") == ("27", "Jul")
+    assert day_month("27.07.2026") == ("27", "Jul")
+    assert day_month("3 august 2026") == ("03", "Aug")
+    assert day_month("garbage") == ("--", "")
+    assert day_month(None) == ("--", "")
