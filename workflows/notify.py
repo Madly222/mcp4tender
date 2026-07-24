@@ -232,6 +232,18 @@ def build_message(store, conn, tender_id):
             "blocks": opts}
 
 
+def _recipients(raw):
+    seen, out = set(), []
+    for chunk in str(raw or "").replace(";", ",").replace("\n", ",").split(","):
+        addr = chunk.strip()
+        key = addr.lower()
+        if not addr or key in seen:
+            continue
+        seen.add(key)
+        out.append(addr)
+    return out
+
+
 def email_config(store):
     return {"enabled": bool(store.get("notify.email.enabled", False)),
             "host": str(store.get("notify.email.host", "") or "").strip(),
@@ -239,8 +251,7 @@ def email_config(store):
             "tls": bool(store.get("notify.email.tls", True)),
             "login": str(store.get("notify.email.login", "") or "").strip(),
             "sender": str(store.get("notify.email.from", "") or "").strip(),
-            "to": [a.strip() for a in
-                   str(store.get("notify.email.to", "") or "").split(",") if a.strip()]}
+            "to": _recipients(store.get("notify.email.to", ""))}
 
 
 def telegram_config(store):
@@ -277,7 +288,8 @@ def send_email(store, msg, password=None, smtp_cls=None):
             if cfg["login"]:
                 s.login(cfg["login"], password)
             s.send_message(m)
-        return "sent"
+        n = len(cfg["to"])
+        return f"sent to {n} address" + ("" if n == 1 else "es")
     except Exception as exc:
         return f"error: {str(exc)[:200]}"
 
