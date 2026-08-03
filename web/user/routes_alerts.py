@@ -100,7 +100,27 @@ def costs_page(request: Request):
             f'<div class="strip"><div class="ic">{icon("clock", 3)}</div><div class="tx">'
             f'<b>{_money(r["c"])}</b><span>{_e(label)} · {r["n"]} calls, '
             f'{r["h"]} from cache</span></div></div>')
-    kpi = f'<div class="strips">{"".join(totals)}</div><div class="gap"></div>'
+    kpi = f'<div class="strips">{"".join(totals)}</div>'
+    try:
+        limit = float(store.get("llm.daily_limit_usd", 0) or 0)
+    except (TypeError, ValueError):
+        limit = 0.0
+    if limit > 0:
+        day_start = now - (time.localtime(now).tm_hour * 3600
+                           + time.localtime(now).tm_min * 60
+                           + time.localtime(now).tm_sec)
+        spent = conn.execute("SELECT COALESCE(SUM(cost),0) c FROM llm_spend WHERE ts >= ?",
+                             (day_start,)).fetchone()["c"] or 0.0
+        pct = min(100, int(spent / limit * 100)) if limit else 0
+        tone = "bad" if spent >= limit else ("warn" if pct >= 80 else "ok")
+        note = (" — limit reached, new AI calls are paused until midnight"
+                if spent >= limit else "")
+        kpi += (f'<div style="margin-top:10px;padding:10px 14px;border-radius:10px;'
+                f'font-size:13px;background:var(--{tone}-weak);'
+                f'border:1px solid var(--{tone}-line);color:var(--{tone})">'
+                f'Today: <b>{_money(spent)}</b> of {_money(limit)} daily limit '
+                f'({pct}%){_e(note)}</div>')
+    kpi += '<div class="gap"></div>'
 
     stage_rows = [
         (f'<tr><td>{_e(r["stage"] or "?")}</td><td>{_e(r["model"] or "")}</td>'

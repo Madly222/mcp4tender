@@ -32,6 +32,7 @@ CONFIG_META = {
     "llm.models": "Model id used per stage. Keys are stage names (extract, ocr, verify, applicability, suppliers...); 'default' is the fallback.",
     "llm.pricing": "USD price per 1,000,000 tokens for each model ({in, out}). Used only to compute the cost figures shown for each call.",
     "llm.cache_enabled": "Cache identical LLM calls in the database so repeated calls are free and instant.",
+    "llm.daily_limit_usd": "Hard cap on AI spend per calendar day (server time). Once today's spend reaches this, every new AI call is refused until midnight — a safety brake against a leaked key or a runaway loop. Cached calls stay free and are never blocked. 0 = no limit.",
 
     "documents.cache_dir": "Directory where downloaded tender documents are cached on disk.",
     "documents.timeout": "HTTP timeout (seconds) when downloading a tender document.",

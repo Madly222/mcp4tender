@@ -55,3 +55,8 @@ def test_friendly_network_and_http_cases():
     assert "server error" in friendly("502 Bad Gateway")
     assert "JavaScript" in friendly("empty prompt content — nothing to send to the model")
 
+
+
+def test_friendly_explains_the_spend_limit():
+    out = friendly("daily spend limit reached: $10.00 of $10.00 spent today")
+    assert "daily AI spending limit" in out and "Settings" in out

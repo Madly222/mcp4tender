@@ -29,6 +29,7 @@ LABELS = {
     "applicability.max_output_tokens": "Length limit on the fit verdict",
     "applicability.proceed_verdicts": "Verdicts worth costing out",
     "llm.cache_enabled": "Reuse identical answers",
+    "llm.daily_limit_usd": "Daily spending limit (USD)",
     "llm.provider": "AI provider",
 
     "documents.cache_dir": "Where downloaded documents are kept",
