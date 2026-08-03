@@ -140,3 +140,32 @@ def test_save_keeps_the_version_history(tmp_path, monkeypatch):
     assert len(rows) >= 2, "seed + edit should both be kept"
     assert rows[-1]["actor"] == "app" and rows[-1]["active"] == 1
     assert rows[0]["active"] == 0, "the seeded version must survive for rollback"
+
+
+def test_internal_state_keys_never_appear_in_the_settings_form(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    from web.user.settings_meta import INTERNAL_KEYS, keys_in
+    p, conn = _fresh(tmp_path, "int1.db")
+    s = ConfigStore(conn); s.reload()
+    s.set("llm.last_key_check", {"status": "ok", "model": "claude-haiku-4-5"})
+    accounts.create(conn, "rl", "password1", role="user"); conn.close()
+    assert "llm.last_key_check" not in keys_in(ConfigStore(db.connect(p)), "ai")
+    h = _login(p).get("/app/settings/ai").text
+    # the raw key name / JSON editor is gone...
+    assert "llm.last_key_check" not in h
+    # ...but the human-readable result is still shown
+    assert "Last test passed" in h
+
+
+def test_saving_an_internal_key_through_the_form_is_rejected(tmp_path, monkeypatch):
+    monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
+    p, conn = _fresh(tmp_path, "int2.db")
+    s = ConfigStore(conn); s.reload()
+    s.set("llm.last_key_check", {"status": "ok"})
+    accounts.create(conn, "rl", "password1", role="user"); conn.close()
+    c = _login(p)
+    c.post("/app/settings/save",
+           data={"key": "llm.last_key_check", "vtype": "json", "v": '{"status":"HACKED"}',
+                 "back": "/app/settings/ai"})
+    got = ConfigStore(db.connect(p)).get("llm.last_key_check")
+    assert got == {"status": "ok"}

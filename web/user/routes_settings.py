@@ -15,7 +15,8 @@ from web.user import dictforms
 from web.user.labels import label_of
 from web.user.forms import FORMS, HANDLED
 from web.user.layout import render
-from web.user.settings_meta import (BY_ID, SECTIONS, keys_in, parse, section_of, vtype_of)
+from web.user.settings_meta import (BY_ID, INTERNAL_KEYS, SECTIONS, keys_in, parse,
+                                     section_of, vtype_of)
 from workflows import work
 
 router = APIRouter()
@@ -65,7 +66,7 @@ async def settings_save(request: Request):
     if not back.startswith("/app/settings"):
         back = "/app/settings"
     sid = section_of(key)
-    if not sid:
+    if not sid or key in INTERNAL_KEYS:
         return RedirectResponse("/app/settings", status_code=303)
     if request.state.store.get("web.read_only"):
         return RedirectResponse(f"{back}?err={quote('read-only mode is on')}", status_code=303)

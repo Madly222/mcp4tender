@@ -8,7 +8,7 @@ PUBLIC repo — never write IPs, hostnames, ports, logins, tokens or anything lo
 
 STATE (2026-07-23)
 ------------------
-667 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
+669 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
 API + genericweb site crawler with detect funnel, feeds probed, scheduler), analysis pipeline
 (triage -> extract -> applicability -> suppliers, each verified by a controller pass), the whole
 user zone /app* (inbox with lifecycle filter, qualified with tabs+deadline sort, tender detail,
@@ -206,7 +206,17 @@ COMPONENT MAP
   plan with a new deadline walks into the inbox itself), routes_browse (search hits the WHOLE base
   in SQL LIKE+LIMIT, never Python), routes_alerts, routes_prefs (ui.theme only), routes_settings +
   settings_meta.py (SECTIONS: longest-prefix match, dotted prefixes ok; web.* deliberately NOT
-  exposed) + forms.py (hand forms: company, relevance, ai key, sending=Email/Telegram cards with
+  exposed; INTERNAL_KEYS = system-written STATE, not settings — llm.last_key_check, alerts.seen_until,
+  sources.rank — filtered out of keys_in so they show in NEITHER the section grid NOR the hub count,
+  and settings_save rejects writes to them. RULE: any key the engine store.set()s as runtime state
+  and that is NOT in config/defaults will otherwise leak into the form as a raw JSON textarea under
+  "Everything else here" — add it to INTERNAL_KEYS. last_key_check was the reported leak; its human
+  form is the "Last test passed/failed" banner in forms.apikey_form. The other json-vtype keys —
+  llm.pricing/models, suppliers.catalog/fx_rates, triage.* weights, sites.*, sources.genericweb/
+  mtender, schedule.jobs, supervisor.rank_weights, applicability.model_by_bucket, capabilities.
+  profile — are REAL structured settings, not state; several already have dictforms, the rest still
+  render as JSON but are legitimately editable, so they stay.)
+  + forms.py (hand forms: company, relevance, ai key, sending=Email/Telegram cards with
   secrets, message=block builder; FORMS[section] renders above generated rows; HANDLED keys drop
   from generated list) + dictforms.py (SPEC-driven dict editors: pairs/fields/table; save_fields
   iterates the STORED dict so a forged field can't inject keys) + labels.py (EVERY generated key
