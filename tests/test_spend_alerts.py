@@ -238,3 +238,17 @@ def test_alerts_page_leads_with_human_message_then_raw_detail(tmp_path):
     assert "err-said" in h and "Technical detail" in h
     assert h.index("err-said") < h.index("GET failed after 3 attempts")
     conn.close()
+
+
+def test_costs_page_shows_today_against_the_daily_limit(tmp_path):
+    p, conn, store = _fresh(tmp_path, "cl.db")
+    store.set("llm.daily_limit_usd", 5.0)
+    conn.execute(
+        "INSERT INTO llm_spend(ts, stage, model, provider, input_tokens, output_tokens, "
+        "cost, cached, tender_id, site_id) VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (time.time(), "extract", "m", "anthropic", 0, 0, 2.0, 0, None, None))
+    conn.commit()
+    c = _login(p, conn)
+    h = c.get("/app/costs").text
+    assert "daily limit" in h and "$5.00" in h
+    conn.close()

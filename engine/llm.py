@@ -61,6 +61,15 @@ def select_provider(store):
 _CTX = threading.local()
 
 
+class SpendLimitError(RuntimeError):
+    pass
+
+
+def _day_start(now):
+    lt = time.localtime(now)
+    return now - (lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec)
+
+
 def set_context(tender_id=None, site_id=None):
     _CTX.tender_id = tender_id
     _CTX.site_id = site_id
@@ -87,6 +96,29 @@ class LLMGateway:
         pricing = self.store.get("llm.pricing", {})
         p = pricing.get(model) or {}
         return (itok / 1e6) * float(p.get("in", 0)) + (otok / 1e6) * float(p.get("out", 0))
+
+    def _daily_limit(self):
+        try:
+            return float(self.store.get("llm.daily_limit_usd", 0) or 0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    def spent_today(self, now=None):
+        now = now or time.time()
+        row = self.conn.execute(
+            "SELECT COALESCE(SUM(cost),0) c FROM llm_spend WHERE ts >= ?",
+            (_day_start(now),)).fetchone()
+        return float((row["c"] if row else 0) or 0)
+
+    def _check_daily_limit(self):
+        limit = self._daily_limit()
+        if limit <= 0 or self.provider.name == "stub":
+            return
+        spent = self.spent_today()
+        if spent >= limit:
+            raise SpendLimitError(
+                f"daily spend limit reached: ${spent:.2f} of ${limit:.2f} spent today — "
+                "analysis is paused until tomorrow, or raise the limit in Settings → AI")
 
     def complete(self, stage, system, messages, max_tokens=1024, prefill=None):
         model = self.model_for(stage)
@@ -119,6 +151,7 @@ class LLMGateway:
         if messages and isinstance(messages[-1].get("content"), str) \
                 and not messages[-1]["content"].strip():
             raise ValueError("empty prompt content — nothing to send to the model")
+        self._check_daily_limit()
         try:
             out = self.provider.generate(model, system, call_messages, max_tokens)
         except Exception as exc:

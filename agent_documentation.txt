@@ -8,7 +8,7 @@ PUBLIC repo — never write IPs, hostnames, ports, logins, tokens or anything lo
 
 STATE (2026-07-23)
 ------------------
-657 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
+664 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
 API + genericweb site crawler with detect funnel, feeds probed, scheduler), analysis pipeline
 (triage -> extract -> applicability -> suppliers, each verified by a controller pass), the whole
 user zone /app* (inbox with lifecycle filter, qualified with tabs+deadline sort, tender detail,
@@ -58,6 +58,13 @@ GLOBAL CONTRACTS
   Model per stage from llm.models (haiku default/extract/suppliers/verify; sonnet applicability);
   auto-retry once on a stale model string with llm.models.default. Key via engine/secrets
   (~/tenderengine/.env or env var), NEVER config. Missing key => stub provider; diagnostics shout.
+  DAILY SPEND CAP (Victor, Jul 25): complete() calls _check_daily_limit() before every REAL
+  provider call — sums llm_spend.cost since local midnight (spent_today) and raises SpendLimitError
+  if it's >= llm.daily_limit_usd. Safety brake against a leaked key / runaway loop. 0 = off
+  (default). Cached hits return before the check (cost $0, never blocked); stub provider is never
+  capped. The error flows through friendly() ("daily AI spending limit reached…") into /app/alerts,
+  and /app/costs shows a Today vs limit banner (ok/warn>=80%/bad>=100%). Cap is per calendar day,
+  server local time — resets at midnight on its own, no cron.
 
 THE LLM CYCLE (worker + controller, confirmed with Victor Jul 23)
 -----------------------------------------------------------------

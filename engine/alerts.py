@@ -16,6 +16,9 @@ def friendly(error, stage=None):
     e = (error or "").lower()
     if not e.strip():
         return "The run failed without leaving a reason. Press Retry failed to run it again."
+    if "daily spend limit" in e or "spend limit reached" in e:
+        return ("The daily AI spending limit has been reached — analysis is paused until "
+                "tomorrow. Raise or clear the limit in Settings → AI if this was expected.")
     if "credit balance" in e or "insufficient" in e or "billing" in e:
         return "The Claude API key has run out of credit — top it up, analysis is failing."
     if "rate limit" in e or "429" in e:

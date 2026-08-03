@@ -27,5 +27,6 @@
       "out": 25.0
     }
   },
-  "llm.cache_enabled": true
+  "llm.cache_enabled": true,
+  "llm.daily_limit_usd": 0.0
 }
