@@ -42,15 +42,18 @@ def alerts_page(request: Request):
     else:
         rows = []
         for a in items:
-            hint = (f'<div class="pref-help" style="color:var(--bad)">{_e(a["hint"])}</div>'
-                    if a["hint"] else "")
+            said = _e(a["hint"]) if a["hint"] else _e(a["error"][:400])
+            detail = ""
+            if a["hint"] and a["error"].strip():
+                detail = ('<details class="err-raw"><summary>Technical detail</summary>'
+                          f'<code>{_e(a["error"][:400])}</code></details>')
             rows.append(
                 "<tr>"
                 f'<td class="mut" style="white-space:nowrap">{_e(_ts(a["ts"]))}</td>'
                 f'<td><span class="chip bad">{_e(a["stage"])}</span></td>'
                 f'<td>{_tender_cell(conn, a["tender_id"])}</td>'
-                f'<td style="max-width:520px;overflow-wrap:anywhere">{_e(a["error"][:400])}'
-                f"{hint}</td></tr>")
+                f'<td style="max-width:520px;overflow-wrap:anywhere">'
+                f'<div class="err-said">{said}</div>{detail}</td></tr>')
         inner = ('<div class="card"><div class="tbl-wrap"><table><thead><tr>'
                  "<th>When</th><th>Where</th><th>Tender</th><th>What happened</th>"
                  f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div></div>')
