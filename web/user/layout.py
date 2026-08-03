@@ -38,8 +38,9 @@ def _nav(path, query, counts):
             badge = ""
             key = it.get("count")
             if key and counts.get(key):
-                badge = f'<span class="badge num">{_e(counts[key])}</span>'
-            out.append(f'<a class="item{on}" href="{_e(it["href"])}">'
+                badge = f'<span class="badge num" data-badge="{_e(key)}">{_e(counts[key])}</span>'
+            data_count = f' data-count="{_e(key)}"' if key else ""
+            out.append(f'<a class="item{on}" href="{_e(it["href"])}"{data_count}>'
                        f'{icon(it.get("icon", "info"))}{_e(it["label"])}{badge}</a>')
             if it.get("sub"):
                 sub = []
@@ -73,6 +74,51 @@ def _who(request):
             f'<div class="nm">{_e(name)}<small>{_e(role)}</small></div></div>')
 
 
+POLL_JS = """<script>
+(function(){
+  var POLL=45000, base=null, banner=null, body=document.body;
+  var d=body.getAttribute('data-inbox');
+  if(d!==null&&d!=='') base=parseInt(d,10);
+  function setBadge(key,n){
+    var link=document.querySelector('a[data-count="'+key+'"]');
+    if(!link) return;
+    var b=link.querySelector('.badge');
+    if(n>0){
+      if(!b){b=document.createElement('span');b.className='badge num';
+        b.setAttribute('data-badge',key);link.appendChild(b);}
+      b.textContent=n;
+    } else if(b){ b.remove(); }
+  }
+  function showBanner(n){
+    if(banner){ banner.querySelector('.tx').textContent=label(n); return; }
+    banner=document.createElement('div');
+    banner.className='newbar';
+    banner.innerHTML='<span class="tx">'+label(n)+'</span>';
+    banner.addEventListener('click',function(){
+      if(location.pathname==='/app/inbox') location.reload();
+      else location.href='/app/inbox';
+    });
+    body.appendChild(banner);
+  }
+  function label(n){ return n+' new tender'+(n===1?'':'s')+' — click to load'; }
+  function tick(){
+    if(document.hidden) return;
+    fetch('/app/inbox/status',{headers:{'Accept':'application/json'}})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(j){
+        if(!j) return;
+        setBadge('inbox',j.inbox); setBadge('alerts',j.alerts);
+        if(base===null){ base=j.inbox; return; }
+        if(j.inbox>base) showBanner(j.inbox-base);
+        else if(j.inbox<base){ base=j.inbox; if(banner){banner.remove();banner=null;} }
+      }).catch(function(){});
+  }
+  setInterval(tick, POLL);
+  document.addEventListener('visibilitychange',function(){ if(!document.hidden) tick(); });
+})();
+</script>"""
+
+
 def render(request, title, body, lede="", heading=None, heading_icon=None,
            actions="", counts=None, head_extra=""):
     store = request.state.store
@@ -89,11 +135,14 @@ def render(request, title, body, lede="", heading=None, heading_icon=None,
                     f'<div class="spacer"></div>{actions}</div>')
         else:
             head = f"<h1>{ic}{_e(heading)}</h1>{led}"
+    binbox = counts.get("inbox")
+    body_attr = f' data-inbox="{int(binbox)}"' if binbox is not None else ""
     return HTMLResponse(
         f'<!doctype html><html lang=en data-theme="{_theme(request)}">'
         "<head><meta charset=utf-8>"
         "<meta name=viewport content='width=device-width,initial-scale=1'>"
-        f"<title>{brand} &middot; {_e(title)}</title>{_links()}{head_extra}</head><body>"
+        f"<title>{brand} &middot; {_e(title)}</title>{_links()}{head_extra}</head>"
+        f"<body{body_attr}>"
         '<input type="checkbox" id="navtoggle" class="nav-toggle" aria-label="Menu">'
         '<div class="shell">'
         '<label for="navtoggle" class="nav-scrim"></label><aside>'
@@ -105,4 +154,4 @@ def render(request, title, body, lede="", heading=None, heading_icon=None,
         '<div class="title">Tender Management<small>Powered by AI analysis</small></div>'
         f'<div class="spacer"></div>{_who(request)}'
         '<a class="btn ghost sm" href="/logout">Sign out</a>'
-        f'</header><main>{head}{body}</main></div></div></body></html>')
+        f'</header><main>{head}{body}</main></div></div>{POLL_JS}</body></html>')

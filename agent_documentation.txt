@@ -8,7 +8,7 @@ PUBLIC repo — never write IPs, hostnames, ports, logins, tokens or anything lo
 
 STATE (2026-07-23)
 ------------------
-664 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
+667 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
 API + genericweb site crawler with detect funnel, feeds probed, scheduler), analysis pipeline
 (triage -> extract -> applicability -> suppliers, each verified by a controller pass), the whole
 user zone /app* (inbox with lifecycle filter, qualified with tabs+deadline sort, tender detail,
@@ -30,7 +30,10 @@ CODE STYLE: NO comments in code. Small modules, ~300 lines max, split when bigge
   no hardcoded values that belong in ConfigStore.
 TESTS: python -m pytest tests/ -q --ignore=tests/test_phase4b.py (phase4b needs pymupdf; fine on
   the server). verify_install.py py_compiles everything — run before any restart (catches
-  3.12-only syntax; the SERVER RUNS PYTHON 3.10: no dt.UTC, no 3.11+ syntax).
+  3.12-only syntax; the SERVER RUNS PYTHON 3.10: no dt.UTC, no 3.11+ syntax). NOTE the sandbox is
+  3.12 so verify_install passes there even on 3.10-invalid code — the one that bit us is a
+  BACKSLASH INSIDE AN F-STRING {expression} (nested f-string with escaped quotes): illegal on 3.10,
+  fine on 3.12. Compute the value in a plain statement first, then interpolate it.
 SANDBOX: filesystem resets between turns; fastapi/python-multipart/pytest/httpx need
   `pip install ... --break-system-packages`. No network route to real tender sites — mock
   preview/analyze/fetch. Chromium available for file:// renders. ~11 test files assert on raw HTML
@@ -181,7 +184,18 @@ COMPONENT MAP
 [WEB-USER] (/app*, the product) web/user/: layout.py render(...,head_extra) + nav.py (counts:
   inbox, alerts red badge, qualified/in_progress/submitted show ZERO too) + icons.py + cards.py
   (deadline_of returns (raw,estimated_flag) NOT a ts — parse with day_end_ts) + counts.py
-  nav_counts + lifecycle.py (see DECISIONS) + errors.py. Pages: routes_home (dashboard; closing-
+  nav_counts + lifecycle.py (see DECISIONS) + errors.py.
+  LIVE AUTO-REFRESH (Victor, Jul 25 — "know about new tenders without reloading"): layout.py
+  POLL_JS is injected on every /app page; it polls GET /app/inbox/status (JSON {inbox, alerts}
+  from nav_counts) every 45s (only when the tab is visible). It live-updates the sidebar badges
+  (nav anchors carry data-count=KEY, badges data-badge=KEY — JS creates/removes the span) and,
+  when the inbox count rises above the baseline stamped on <body data-inbox=N> at render, drops a
+  fixed .newbar "N new tenders — click to load" pill (goes to /app/inbox, or reloads if already
+  there). Count dropping (user decided some) silently lowers the baseline and clears the pill.
+  Deliberately a click-to-load banner, NOT a hard auto-reload — a reload mid-decision would wipe
+  filter/scroll/an in-progress choice. The CSS nav drawer stays JS-free (test_mobile guards the
+  checkbox+label drawer and bans inline onclick= attrs; the poll uses addEventListener).
+  Pages: routes_home (dashboard; closing-
   soon .mini rows ellipsize via CSS, don't hard-truncate), routes_inbox (lifecycle filter, sweep,
   sort dropdown newest|deadline), routes_qualified (stage tabs, sort links deadline-default —
   N/A last, send button as formaction INSIDE the row form, never nest forms; the "missing" branch
