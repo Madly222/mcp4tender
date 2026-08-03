@@ -8,7 +8,7 @@ PUBLIC repo — never write IPs, hostnames, ports, logins, tokens or anything lo
 
 STATE (2026-07-23)
 ------------------
-653 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
+657 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
 API + genericweb site crawler with detect funnel, feeds probed, scheduler), analysis pipeline
 (triage -> extract -> applicability -> suppliers, each verified by a controller pass), the whole
 user zone /app* (inbox with lifecycle filter, qualified with tabs+deadline sort, tender detail,
@@ -80,10 +80,22 @@ COMPONENT MAP
   engine/registry.py, contracts.py, checks.py, hashing.py, jsonutil.py, http.py.
 
 [COLLECT] workflows/collectors/mtender.py — OCDS API (list_url ?offset=date), normalize_record
-  (title/buyer/value/cpv/documents/deadline=tenderPeriod.endDate/enquiry/publication/status/
+  (title/buyer/value/cpv/documents/deadline via _submission_deadline/enquiry/publication/status/
   statusDetails via _latest, awards via structural _awarded), base-ocid dedup, document dedup
   (same file re-uploaded per stage: dedupe_documents keeps newest by title key). mtender.md web is
   a JS SPA — NEVER scrape it, the API is complete (1520 collected).
+  DEADLINE = "Depunerea ofertelor" (offer-submission close), NOT tenderPeriod.endDate. On MD
+  auction procedures tenderPeriod spans submission-close -> auction, so its endDate is the auction
+  phase (06 Aug on ocds-b3wdp1-MD-1785155348345), several days AFTER offers actually close
+  (03 Aug). The 03 Aug moment lives in BOTH enquiryPeriod.endDate and tenderPeriod.startDate.
+  _submission_deadline: if auctionPeriod.startDate exists (the quirk signal) -> enquiryPeriod.endDate
+  (fallback tenderPeriod.startDate); else tenderPeriod.endDate (unchanged, OCDS-compliant, no
+  regression on plain procedures). Landmine handled: the planning release also carries a
+  tenderPeriod with ONLY a startDate (procedure open date) — _tender_period prefers the release
+  whose tenderPeriod has an endDate so that planning date never becomes the deadline. This is the
+  single date the whole lifecycle keys on (keep_on_collect, archive, open/closed, closing soon),
+  so fixing it here fixes all of them. Victor, Jul 25: the system was keeping tenders alive past
+  the point offers could be submitted.
   workflows/collectors/genericweb.py — arbitrary listing sites from sites.tenders[] ({id,label,
   url,enabled,step_percent,render,engine}). Modes: backfill (cursor resume), incremental (front
   pages; page-1 text-hash gate skips the model when unchanged — crawl_state.page_hash, saved only
