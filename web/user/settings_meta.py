@@ -37,6 +37,11 @@ SECTIONS = [
 
 ADMIN_ONLY = ("web",)
 
+# System-written state — the engine sets these itself; they are not settings a human
+# edits, and must never surface in the settings UI (they'd render as raw JSON blobs).
+# The human-readable version is shown elsewhere (e.g. the AI page's last-test banner).
+INTERNAL_KEYS = ("llm.last_key_check", "alerts.seen_until", "sources.rank")
+
 BY_ID = {s[0]: s for s in SECTIONS}
 
 
@@ -58,7 +63,8 @@ def is_admin_only(key):
 
 
 def keys_in(store, section_id):
-    return sorted(k for k in store.all() if section_of(k) == section_id)
+    return sorted(k for k in store.all()
+                  if section_of(k) == section_id and k not in INTERNAL_KEYS)
 
 
 def vtype_of(value):
