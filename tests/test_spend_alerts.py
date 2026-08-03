@@ -225,3 +225,16 @@ def test_costs_page_links_to_calls_and_tender_line_links(tmp_path):
     assert "Most expensive calls" in page
     tpage = c.get(f"/app/tender/{t1}").text
     assert f"/app/costs/calls?tender_id={t1}" in tpage
+
+
+def test_alerts_page_leads_with_human_message_then_raw_detail(tmp_path):
+    p, conn, store = _fresh(tmp_path, "c9.db")
+    tid = _add(conn, "a9", "2026-09-01", time.time())
+    _err_run(conn, "GET failed after 3 attempts: https://portal: connection refused",
+             tender_id=tid)
+    c = _login(p, conn)
+    h = c.get("/app/alerts").text
+    assert "Couldn&#x27;t reach the tender site" in h
+    assert "err-said" in h and "Technical detail" in h
+    assert h.index("err-said") < h.index("GET failed after 3 attempts")
+    conn.close()

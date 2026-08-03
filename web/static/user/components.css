@@ -251,3 +251,12 @@ letter-spacing:.02em}
 .keyname:hover{opacity:1}
 .badge.bad{background:var(--bad);color:#fff}
 .mini .mt span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.err-said{line-height:1.4}
+.err-raw{margin-top:6px}
+.err-raw summary{cursor:pointer;color:var(--mut-2);font-size:12px;list-style:none;
+user-select:none}
+.err-raw summary::-webkit-details-marker{display:none}
+.err-raw summary::before{content:"▸ ";color:var(--mut-2)}
+.err-raw[open] summary::before{content:"▾ "}
+.err-raw code{display:block;margin-top:4px;padding:6px 8px;background:var(--panel-2);
+border-radius:6px;font-size:12px;color:var(--mut);overflow-wrap:anywhere;white-space:pre-wrap}

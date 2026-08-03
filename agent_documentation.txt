@@ -8,7 +8,7 @@ PUBLIC repo — never write IPs, hostnames, ports, logins, tokens or anything lo
 
 STATE (2026-07-23)
 ------------------
-649 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
+653 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
 API + genericweb site crawler with detect funnel, feeds probed, scheduler), analysis pipeline
 (triage -> extract -> applicability -> suppliers, each verified by a controller pass), the whole
 user zone /app* (inbox with lifecycle filter, qualified with tabs+deadline sort, tender detail,
@@ -130,7 +130,13 @@ COMPONENT MAP
 [SPEND+ALERTS] engine/llm.py writes EVERY call (cached too, $0) to llm_spend with thread-local
   context (llm.set_context(tender_id=/site_id=) — set by runner per tender, genericweb per site,
   recheck per tender). engine/alerts.py — recent() = stage_runs status=error + qualify_runs
-  failed, last 7 days; friendly() translates credit/rate/auth/overload errors to plain fixes;
+  failed, last 7 days; friendly(error, stage) is the SINGLE translation point and now ALWAYS
+  returns a human sentence — Anthropic API codes (credit/rate/auth/overload), plus network
+  (timeout, GET failed/DNS/connection), HTTP (404/5xx), empty-prompt (JS-only page), JSON/parse,
+  sqlite, the Jul-23 join crash, and a stage-aware generic fallback ("failed while reading the
+  tender documents…") for anything unmapped. The page (routes_alerts) LEADS with that sentence
+  in .err-said and demotes the raw text to a collapsed <details class="err-raw"> "Technical
+  detail" — support can still read it, the operator isn't shown a stack trace first.
   unseen_count vs config alerts.seen_until. web/user/routes_alerts.py — /app/alerts (list + Mark
   all read), /app/costs (totals today/7d/30d/all; by stage+model, by site, top tenders — all with
   token in/out columns and links into the call journal) and /app/costs/calls — ONE ROW PER MODEL
@@ -286,12 +292,13 @@ TODO (priority order, agreed with Victor)
 8. Scheduler refinements: per-site cadence; auto-heal (N empty incremental runs on a previously
    producing site -> re-run detect_site_profile). Feed-walking collector branch (feed_url is
    stored, unused). Gate the site Analyse button on a per-site "ready" flag (Victor's ask).
-9. ERROR NORMALIZATION (Victor, Jul 23): every raw error surfaced to the user must be translated
-   into plain human language. engine/alerts.friendly is the one translation point — extend its
-   mapping whenever a new cryptic error shows up in /app/alerts (each hint says what happened and
-   what to do); the raw text stays visible below for support. Longer term: run stage_runs error
-   strings through friendly() everywhere they render, and add mappings for the common Python/
-   sqlite/network classes, not only Anthropic API codes.
+9. ERROR NORMALIZATION (Victor, Jul 23) — DONE Jul 24 for /app/alerts. friendly(error, stage)
+   now always returns a human sentence and covers the network/HTTP/JSON/sqlite/empty-prompt
+   classes plus a stage-aware generic fallback; the alerts page leads with it and hides the raw
+   text in a collapsible detail. STILL OPEN: the same friendly() pass isn't applied everywhere
+   else a raw error can reach a human (in-tender stage banners, collect notes). When a new cryptic
+   string shows up in /app/alerts, add a branch to friendly() — it's still the one translation
+   point. Do NOT let raw exception text render to the operator anywhere without going through it.
 10. Decide verify controller model (haiku vs sonnet) and applicability cost (sonnet dominates
    spend) using /app/costs data. Battle-test segments + recheck on a week of real scheduled runs.
 11. Verify Crawl4AI on the server (may need a 1-line _crawl tweak per installed version).
