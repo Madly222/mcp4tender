@@ -186,6 +186,24 @@ def _documents(crs):
     return dedupe_documents(docs)
 
 
+def _tender_period(crs):
+    full = _first(crs, lambda cr: (
+        (cr.get("tender") or {}).get("tenderPeriod")
+        if ((cr.get("tender") or {}).get("tenderPeriod") or {}).get("endDate") else None))
+    return full or _first(crs, lambda cr: (cr.get("tender") or {}).get("tenderPeriod")) or {}
+
+
+def _submission_deadline(crs):
+    tp = _tender_period(crs)
+    ep_end = _first(crs, lambda cr: (
+        (cr.get("tender") or {}).get("enquiryPeriod") or {}).get("endDate"))
+    ap_start = _first(crs, lambda cr: (
+        (cr.get("tender") or {}).get("auctionPeriod") or {}).get("startDate"))
+    if ap_start:
+        return ep_end or tp.get("startDate") or tp.get("endDate")
+    return tp.get("endDate") or ep_end
+
+
 def normalize_record(record_package, ocid):
     crs = _all_compiled(record_package)
     tg = lambda key: _first(crs, lambda cr: (cr.get("tender") or {}).get(key))
@@ -204,7 +222,7 @@ def normalize_record(record_package, ocid):
         "procurement_method": tg("procurementMethod"),
         "main_category": tg("mainProcurementCategory"),
         "cpv": _cpv(crs),
-        "deadline": _first(crs, lambda cr: ((cr.get("tender") or {}).get("tenderPeriod") or {}).get("endDate")),
+        "deadline": _submission_deadline(crs),
         "enquiry_deadline": _first(crs, lambda cr: ((cr.get("tender") or {}).get("enquiryPeriod") or {}).get("endDate")),
         "publication_date": _first(crs, lambda cr: ((cr.get("tender") or {}).get("datePublished")) or cr.get("date")),
         "documents": _documents(crs),
