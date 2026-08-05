@@ -40,7 +40,8 @@ ADMIN_ONLY = ("web",)
 # System-written state — the engine sets these itself; they are not settings a human
 # edits, and must never surface in the settings UI (they'd render as raw JSON blobs).
 # The human-readable version is shown elsewhere (e.g. the AI page's last-test banner).
-INTERNAL_KEYS = ("llm.last_key_check", "alerts.seen_until", "sources.rank")
+INTERNAL_KEYS = ("llm.last_key_check", "alerts.seen_until", "sources.rank",
+                 "schedule.last_fired")
 
 BY_ID = {s[0]: s for s in SECTIONS}
 

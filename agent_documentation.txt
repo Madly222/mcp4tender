@@ -8,7 +8,7 @@ PUBLIC repo — never write IPs, hostnames, ports, logins, tokens or anything lo
 
 STATE (2026-07-23)
 ------------------
-669 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
+674 tests pass (pytest -q --ignore=tests/test_phase4b.py). Built and live: collection (MTender OCDS
 API + genericweb site crawler with detect funnel, feeds probed, scheduler), analysis pipeline
 (triage -> extract -> applicability -> suppliers, each verified by a controller pass), the whole
 user zone /app* (inbox with lifecycle filter, qualified with tabs+deadline sort, tender detail,
@@ -176,7 +176,20 @@ COMPONENT MAP
   (.env-backed; get/set_api_key, read_env/write_env_var, mask). engine/documents.py (pymupdf).
   engine/scheduler.py + workflows/collect_jobs.py — cron-ish schedule.jobs {kind:"collect",
   sources,days,at,analyze,enabled}; runs inside app.py serve / web process; incremental finds =>
-  New segment. engine/dedup.py + web/source_rank.py — see DECISIONS. engine/accounts.py —
+  New segment. NOTE analysis is NOT a separate job — it's the collect job with analyze:true, and
+  run_collect_job analyzes scope="all" (every pending tender, not just this run's new ones).
+  SLOT FIRING (Victor, Jul 25 — "why didn't 09:00 run?"): dispatch runs SYNCHRONOUSLY in tick(),
+  and run_forever ticks every 30s, so an 8-min analyze blocks the loop and no tick lands during
+  the next minutes. The old job_due matched now.strftime("%H:%M") EXACTLY == a slot, so a slot
+  whose minute got no tick (loop blocked, restart, drift) was silently dropped for the day with no
+  catch-up; last_fired was in-memory too, lost on restart. FIXED: job_due now fires the latest
+  slot today that is <= now, within schedule.catchup_minutes (default 180) so a late/​resumed tick
+  still runs it, keyed by slot_id "YYYY-MM-DD HH:MM" so it fires once and a later same-day slot
+  still fires; a slot older than the window is skipped (a 15:00 restart won't run the 09:00 batch).
+  last_fired is persisted to store key schedule.last_fired (an INTERNAL_KEY, hidden from settings)
+  and reloaded in __init__, so a restart neither refires nor forgets. First deploy: last_fired
+  starts empty, so the next tick may catch up the most recent within-window slot once — expected.
+  engine/dedup.py + web/source_rank.py — see DECISIONS. engine/accounts.py —
   PBKDF2-SHA256 240k, per-IP throttle, sessions; an account is a COMPANY credential; roles
   admin|user (user sees only /app*; token mode = full access while zero accounts exist, env
   TENDERENGINE_WEB_TOKEN wins over config web.token).
