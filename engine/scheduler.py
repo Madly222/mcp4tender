@@ -8,6 +8,12 @@ _DAYNAMES = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 
 
 MAX_TIMES_PER_DAY = 24
 
+# How late a missed time-slot may still fire. A tick that lands after the exact
+# minute (loop blocked by a long job, a restart, clock drift) still runs the slot
+# instead of silently dropping it — but a slot older than this is treated as stale
+# and skipped, so a restart at 15:00 doesn't run the 09:00 batch.
+DEFAULT_CATCHUP_MINUTES = 180
+
 
 def job_key(job) -> str:
     return json.dumps(job, sort_keys=True, ensure_ascii=False)
@@ -47,7 +53,11 @@ def now_in_tz(store):
     return dt.datetime.now()
 
 
-def job_due(job, now, last_fired):
+def slot_id(when):
+    return when.strftime("%Y-%m-%d %H:%M")
+
+
+def job_due(job, now, last_fired, catchup_minutes=DEFAULT_CATCHUP_MINUTES):
     if not job.get("enabled", True):
         return None
     days = _norm_days(job.get("days"))
@@ -56,11 +66,21 @@ def job_due(job, now, last_fired):
     key = job_key(job)
     times = job_times(job)
     if times:
-        current = now.strftime("%H:%M")
-        if current in times:
-            slot = now.replace(second=0, microsecond=0)
-            if last_fired.get(key) != slot:
-                return slot
+        due = None
+        for t in times:
+            try:
+                hh, mm = str(t).split(":")
+                slot = now.replace(hour=int(hh), minute=int(mm), second=0, microsecond=0)
+            except (ValueError, TypeError):
+                continue
+            if slot <= now and (due is None or slot > due):
+                due = slot
+        if due is None:
+            return None
+        if (now - due).total_seconds() > catchup_minutes * 60:
+            return None
+        if last_fired.get(key) != slot_id(due):
+            return due
         return None
     if "every_minutes" in job:
         interval = int(job["every_minutes"]) * 60
@@ -77,15 +97,38 @@ class Scheduler:
         self.logger = logger or (lambda m: None)
         self.last_fired = {}
         self._stop = threading.Event()
+        saved = self.store.get("schedule.last_fired", {}) or {}
+        if isinstance(saved, dict):
+            for k, v in saved.items():
+                if isinstance(v, str):
+                    self.last_fired[k] = v
+
+    def _persist_fired(self):
+        keep = {k: v for k, v in self.last_fired.items() if isinstance(v, str)}
+        try:
+            self.store.set("schedule.last_fired", keep, actor="scheduler",
+                           note="slot fire tracking")
+        except Exception as exc:
+            self.logger(f"could not persist schedule state: {exc}")
 
     def tick(self, now=None):
         now = now or now_in_tz(self.store)
         jobs = self.store.get("schedule.jobs", [])
+        try:
+            grace = int(self.store.get("schedule.catchup_minutes", DEFAULT_CATCHUP_MINUTES)
+                        or DEFAULT_CATCHUP_MINUTES)
+        except (TypeError, ValueError):
+            grace = DEFAULT_CATCHUP_MINUTES
         fired = []
         for job in jobs:
-            slot = job_due(job, now, self.last_fired)
+            slot = job_due(job, now, self.last_fired, grace)
             if slot is not None:
-                self.last_fired[job_key(job)] = slot
+                key = job_key(job)
+                if job_times(job):
+                    self.last_fired[key] = slot_id(slot)
+                    self._persist_fired()
+                else:
+                    self.last_fired[key] = slot
                 label = job.get("pipeline") or job.get("kind") or "job"
                 self.logger(f"dispatch {label}")
                 try:
