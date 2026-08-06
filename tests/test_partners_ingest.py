@@ -157,3 +157,48 @@ def test_reclassify_and_type_columns_migrate_onto_old_tables(tmp_path):
     assert out["typed"] == 1
     row = conn.execute("SELECT product_type FROM partner_offers").fetchone()
     assert row["product_type"] == "Network Switch"
+
+
+def test_fx_converts_non_usd_cost_to_usd():
+    from partners.fx import to_usd
+    fx = {"EUR->MDL": 19.6, "USD->MDL": 18.0, "RON->MDL": 3.9}
+    assert to_usd(50, "USD", fx) == 50.0
+    assert round(to_usd(100, "EUR", fx), 2) == 108.89
+    assert round(to_usd(100, "RON", fx), 2) == 21.67
+    assert to_usd(10, "GBP", fx) is None
+    assert to_usd(None, "EUR", fx) is None
+
+
+def test_reingest_supersedes_the_partners_previous_offers(tmp_path):
+    import openpyxl
+    conn = _conn(tmp_path)
+    f1 = tmp_path / "v1.xlsx"
+    _make_book(f1)
+    ingest_workbook(conn, str(f1), get_profile("accent"))
+    active1 = conn.execute("SELECT COUNT(*) c FROM partner_offers WHERE active=1").fetchone()["c"]
+    assert active1 == 4
+
+    f2 = tmp_path / "v2.xlsx"
+    _make_book(f2)
+    wb = openpyxl.load_workbook(f2)
+    wb["PriceList"].cell(8, 8, 41)  # change a dealer price so the sha differs
+    wb.save(f2)
+    ingest_workbook(conn, str(f2), get_profile("accent"))
+
+    active2 = conn.execute("SELECT COUNT(*) c FROM partner_offers WHERE active=1").fetchone()["c"]
+    history = conn.execute("SELECT COUNT(*) c FROM partner_offers WHERE active=0").fetchone()["c"]
+    assert active2 == 4 and history == 4
+
+
+def test_non_usd_profile_gets_price_usd_via_fx(tmp_path):
+    import openpyxl
+    conn = _conn(tmp_path)
+    f = tmp_path / "eur.xlsx"
+    _make_book(f)
+    prof = get_profile("accent")
+    prof = {**prof, "sheets": [{**prof["sheets"][0], "cost_currency": "EUR"}] + prof["sheets"][1:]}
+    ingest_workbook(conn, str(f), prof, {"EUR->MDL": 19.6, "USD->MDL": 18.0})
+    r = conn.execute("SELECT price_original, currency, price_usd FROM partner_offers "
+                     "WHERE mpn='XDC-RF120B'").fetchone()
+    assert r["currency"] == "EUR" and r["price_original"] == 4.7
+    assert round(r["price_usd"], 2) == round(4.7 * 19.6 / 18.0, 2)

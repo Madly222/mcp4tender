@@ -30,7 +30,7 @@ def _uploads_dir(request):
 def pool(request: Request, q: str = "", partner: str = "", ptype: str = "", page: int = 1):
     conn = request.state.conn
     init_partner_schema(conn)
-    where, args = [], []
+    where, args = ["active = 1"], []
     if partner:
         where.append("partner = ?")
         args.append(partner)
@@ -51,7 +51,7 @@ def pool(request: Request, q: str = "", partner: str = "", ptype: str = "", page
     partners = pstore.list_partners(conn)
     types = [r["product_type"] for r in conn.execute(
         "SELECT product_type, COUNT(*) n FROM partner_offers WHERE product_type IS NOT NULL "
-        "GROUP BY product_type ORDER BY n DESC").fetchall()]
+        "AND active=1 GROUP BY product_type ORDER BY n DESC").fetchall()]
     pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
     pager = ""
     if pages > 1:
@@ -133,8 +133,9 @@ async def confirm_submit(request: Request, sid: int):
     partner = (form.get("partner") or st["partner"]).strip()
     profile = _profile_from_form(form, partner, st["detected"])
     pstore.save_profile(conn, profile)
+    fx = request.state.store.get("suppliers.fx_rates", {}) or {}
     try:
-        report = ingest_workbook(conn, st["path"], profile)
+        report = ingest_workbook(conn, st["path"], profile, fx)
         total = sum(v.get("products", 0) for v in report["sheets"].values()
                     if isinstance(v, dict))
         msg = f"imported {total} products"

@@ -63,7 +63,17 @@ price_usd NULL for now (wire to suppliers.fx_rates at stage 6).
   Accent: 100% typed, 93% by rule. product_type/type_source are columns on partner_offers
   (init_partner_schema migrates them onto old tables via ADD COLUMN). Set at ingest; CLI
   `categorize` re-runs classify on all rows after editing the rules. Pool has a Type filter.
-6 supersede old offers on re-ingest + fx for non-USD partners — NEXT.
+6 supersede old offers on re-ingest + fx for non-USD — DONE (Jul 25). partner_offers.active
+  flag (migrated onto old tables): each ingest_workbook sets active=0 on ALL of that partner's
+  prior offers then inserts the new file's rows as active=1, so only the latest price-list per
+  partner is current; old rows kept for history. The pool, type list, and partner counts all
+  filter active=1. FX: partners/fx.py to_usd pivots through MDL (X->USD = X->MDL / USD->MDL)
+  reading suppliers.fx_rates from the MAIN project's config (read_fx_rates reads the configs
+  table directly; web passes store.get). price_usd is computed for every currency at ingest
+  (was USD-only). CLI `fx` backfills price_usd on existing rows. Ranking uses the regular dealer
+  cost (price_usd); promo is a note, NOT the ranking price (Victor's call — promo is temporary
+  and may lapse by delivery). Identical re-send still rejected by the partner_files sha256 index;
+  a CHANGED file supersedes.
 7 top-3 cheapest partners per MPN (or type+spec) — NEXT (needs >1 partner loaded).
 
 ## Dependency

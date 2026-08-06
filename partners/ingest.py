@@ -8,6 +8,7 @@ import openpyxl
 
 from partners.normalize import clean_text, norm_label, norm_mpn, to_number
 from partners.categorize import classify
+from partners.fx import to_usd
 
 
 def file_sha256(path):
@@ -79,12 +80,12 @@ def _crumb_path(crumbs, level):
     return " / ".join(parts) if parts else None
 
 
-def _build_offer(ws, row, colmap, sheet_cfg, crumbs, level):
+def _build_offer(ws, row, colmap, sheet_cfg, crumbs, level, fx_rates):
     cost_field = sheet_cfg.get("cost_field", "cost")
     promo_field = sheet_cfg.get("promo_field", "promo")
     currency = sheet_cfg.get("cost_currency", "USD")
     price_original = to_number(_cell(ws, row, colmap, cost_field)) if cost_field else None
-    price_usd = price_original if currency == "USD" else None
+    price_usd = to_usd(price_original, currency, fx_rates)
     promo = to_number(_cell(ws, row, colmap, promo_field)) if promo_field else None
     mpn = clean_text(_cell(ws, row, colmap, "mpn"))
     extra = {}
@@ -114,7 +115,7 @@ def _build_offer(ws, row, colmap, sheet_cfg, crumbs, level):
     }
 
 
-def _ingest_sheet(ws, sheet_cfg):
+def _ingest_sheet(ws, sheet_cfg, fx_rates):
     header_row, labels = _header_map(ws, sheet_cfg.get("header_tokens", []))
     if header_row is None:
         return [], {"header": "not found", "products": 0, "categories": 0, "unparsed": 0}
@@ -133,7 +134,7 @@ def _ingest_sheet(ws, sheet_cfg):
             stats["categories"] += 1
         elif kind == "product":
             level = _outline_level(ws, row)
-            offer = _build_offer(ws, row, colmap, sheet_cfg, crumbs, level)
+            offer = _build_offer(ws, row, colmap, sheet_cfg, crumbs, level, fx_rates)
             if offer["price_original"] is None and not offer["mpn"]:
                 stats["unparsed"] += 1
                 continue
@@ -142,7 +143,7 @@ def _ingest_sheet(ws, sheet_cfg):
     return offers, stats
 
 
-def ingest_workbook(conn, path, profile):
+def ingest_workbook(conn, path, profile, fx_rates=None):
     from partners.schema import init_partner_schema
     init_partner_schema(conn)
     partner = profile["partner"]
@@ -156,6 +157,10 @@ def ingest_workbook(conn, path, profile):
                        (partner, filename, sha, time.time(), json.dumps(sheets)))
     file_id = cur.lastrowid
     now = time.time()
+    superseded = conn.execute(
+        "UPDATE partner_offers SET active=0 WHERE partner=? AND active=1",
+        (partner,)).rowcount
+    report["superseded"] = superseded
     for sheet_cfg in profile["sheets"]:
         name = sheet_cfg["name"]
         if name not in wb.sheetnames:
@@ -164,7 +169,7 @@ def ingest_workbook(conn, path, profile):
         if not sheet_cfg.get("ingest"):
             report["sheets"][name] = {"skipped": sheet_cfg.get("reason", "not ingested")}
             continue
-        offers, stats = _ingest_sheet(wb[name], sheet_cfg)
+        offers, stats = _ingest_sheet(wb[name], sheet_cfg, fx_rates or {})
         for off in offers:
             conn.execute(
                 "INSERT INTO partner_offers(file_id, partner, sheet, row_no, brand, mpn, "

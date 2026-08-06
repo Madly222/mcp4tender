@@ -22,8 +22,10 @@ def cmd_ingest(args):
         print(f"unknown partner '{args.partner}'. known: {', '.join(known_partners())}")
         return 2
     conn = _connect(args.db)
-    report = ingest_workbook(conn, args.file, profile)
-    print(f"partner: {report['partner']}   file_id: {report['file_id']}")
+    from partners.fx import read_fx_rates
+    report = ingest_workbook(conn, args.file, profile, read_fx_rates(conn))
+    print(f"partner: {report['partner']}   file_id: {report['file_id']}   "
+          f"superseded {report.get('superseded', 0)} prior offers")
     total = 0
     for sheet, stats in report["sheets"].items():
         if "skipped" in stats:
@@ -64,6 +66,14 @@ def cmd_categorize(args):
     return 0
 
 
+def cmd_fx(args):
+    from partners.fx import backfill_usd, read_fx_rates
+    conn = _connect(args.db)
+    r = backfill_usd(conn, read_fx_rates(conn))
+    print(f"USD backfill: {r['filled']}/{r['missing']} offers converted")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="partners")
     ap.add_argument("--db", default="tenderengine.db")
@@ -77,6 +87,8 @@ def main(argv=None):
     s.set_defaults(func=cmd_sample)
     z = sub.add_parser("categorize")
     z.set_defaults(func=cmd_categorize)
+    x = sub.add_parser("fx")
+    x.set_defaults(func=cmd_fx)
     args = ap.parse_args(argv)
     return args.func(args)
 

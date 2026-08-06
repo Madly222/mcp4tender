@@ -33,7 +33,8 @@ def save_profile(conn, profile):
 def list_partners(conn):
     init_partner_schema(conn)
     rows = conn.execute(
-        "SELECT partner, COUNT(*) n FROM partner_offers GROUP BY partner").fetchall()
+        "SELECT partner, COUNT(*) n FROM partner_offers WHERE active=1 "
+        "GROUP BY partner").fetchall()
     return [(r["partner"], r["n"]) for r in rows]
 
 
