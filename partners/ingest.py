@@ -85,6 +85,14 @@ def _build_offer(ws, row, colmap, sheet_cfg, crumbs, level, fx_rates):
     promo_field = sheet_cfg.get("promo_field", "promo")
     currency = sheet_cfg.get("cost_currency", "USD")
     price_original = to_number(_cell(ws, row, colmap, cost_field)) if cost_field else None
+    if price_original is None:
+        lei = to_number(_cell(ws, row, colmap, "price_lei"))
+        if lei is not None:
+            price_original, currency = lei, "MDL"
+        else:
+            usd = to_number(_cell(ws, row, colmap, "retail_usd"))
+            if usd is not None:
+                price_original, currency = usd, "USD"
     price_usd = to_usd(price_original, currency, fx_rates)
     promo = to_number(_cell(ws, row, colmap, promo_field)) if promo_field else None
     mpn = clean_text(_cell(ws, row, colmap, "mpn"))

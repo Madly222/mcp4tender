@@ -93,3 +93,15 @@ python-multipart is already present (used by the settings forms).
 
 Accent PriceList_23-10-31.xlsx: 3787 products, 501 category rows, 0 unparsed;
 Used-Refurb + ASC skipped.
+
+## Fixes after real partner files (Jul 25)
+- LEI-ONLY files silently imported 0 (DKC/Creit): a sheet with only "Pret, MDL" and no dealer/
+  cost column was marked ingest=false because the flag required cost or retail_usd. Now detect
+  PROMOTES a lone price column into `cost` when no dedicated cost exists (price_lei -> cost,
+  cost_currency=MDL; else retail_usd -> USD), the ingest flag needs only mpn + any price, the
+  confirm screen preselects the detected currency, and _build_offer falls back cost -> price_lei
+  (MDL) -> retail_usd (USD) as a safety net. DKC now imports 173 rows, 124 MDL -> $6.89 @ 18.
+- SILENT ZERO fixed: confirm now redirects with a msg banner on the pool — "imported N; M rows had
+  no price/article; skipped sheets: ...". No more mystery zero.
+- Cross-partner compare needs the SAME article (BRAND+P/N) at 2+ partners; with mostly disjoint
+  catalogs the multi-partner list is short. Fuzzy/no-MPN matching is a future task.

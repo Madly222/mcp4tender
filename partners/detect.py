@@ -86,9 +86,17 @@ def detect_header(ws, scan=30):
         if best_col is not None:
             columns[field] = cells[best_col]
             used.add(best_col)
+    cost_currency = "USD"
+    if "cost" not in columns:
+        if "price_lei" in columns:
+            columns["cost"] = columns["price_lei"]
+            cost_currency = "MDL"
+        elif "retail_usd" in columns:
+            columns["cost"] = columns["retail_usd"]
     return {"header_row": best_row,
             "labels": [cells.get(c, "") for c in range(1, ws.max_column + 1)],
-            "columns": columns}
+            "columns": columns,
+            "cost_currency": cost_currency}
 
 
 def detect_workbook(path):
@@ -102,6 +110,5 @@ def detect_workbook(path):
                        "images": len(getattr(ws, "_images", [])),
                        "detected": det,
                        "ingest": bool(det and det["columns"].get("mpn")
-                                      and (det["columns"].get("cost")
-                                           or det["columns"].get("retail_usd")))})
+                                      and det["columns"].get("cost"))})
     return {"sheets": sheets}

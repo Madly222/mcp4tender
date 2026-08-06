@@ -202,3 +202,50 @@ def test_non_usd_profile_gets_price_usd_via_fx(tmp_path):
                      "WHERE mpn='XDC-RF120B'").fetchone()
     assert r["currency"] == "EUR" and r["price_original"] == 4.7
     assert round(r["price_usd"], 2) == round(4.7 * 19.6 / 18.0, 2)
+
+
+def _lei_only_book(path):
+    import openpyxl
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "PRODUCTS"
+    for c, v in enumerate(["Foto", "Denumire", "Cod Catalog", "Unit.", "Pret, MDL"], start=1):
+        ws.cell(4, c, v)
+    ws.cell(5, 2, "CABLU CANAL")  # sub-header, no article/price -> dropped
+    rows = [("CANAL CABLU TA-GN 60X40", "01780", "m", 124),
+            ("CANAL CABLU TA-GN 80X40", "01781", "m", 148.8)]
+    r = 6
+    for desc, cod, unit, price in rows:
+        ws.cell(r, 2, desc); ws.cell(r, 3, cod); ws.cell(r, 4, unit); ws.cell(r, 5, price)
+        r += 1
+    wb.save(path)
+
+
+def test_lei_only_file_is_ingestable_and_detected_as_mdl(tmp_path):
+    from partners.detect import detect_workbook
+    f = tmp_path / "dkc.xlsx"
+    _lei_only_book(f)
+    det = detect_workbook(str(f))
+    sheet = det["sheets"][0]
+    assert sheet["ingest"] is True
+    assert sheet["detected"]["cost_currency"] == "MDL"
+    assert sheet["detected"]["columns"]["cost"] == "pret, mdl"
+
+
+def test_lei_only_prices_import_and_convert_to_usd(tmp_path):
+    f = tmp_path / "dkc.xlsx"
+    _lei_only_book(f)
+    conn = _conn(tmp_path)
+    profile = {"partner": "DKC", "sheets": [{
+        "name": "PRODUCTS", "ingest": True,
+        "header_tokens": ["cod catalog", "denumire"],
+        "columns": {"mpn": "cod catalog", "description": "denumire", "price_lei": "pret, mdl",
+                    "cost": "pret, mdl"},
+        "cost_field": "cost", "cost_currency": "MDL", "category": "outline"}]}
+    ingest_workbook(conn, str(f), profile, {"USD->MDL": 18.0})
+    n = conn.execute("SELECT COUNT(*) c FROM partner_offers").fetchone()["c"]
+    assert n == 2
+    r = conn.execute("SELECT price_original, currency, price_usd FROM partner_offers "
+                     "WHERE mpn='01780'").fetchone()
+    assert r["price_original"] == 124.0 and r["currency"] == "MDL"
+    assert round(r["price_usd"], 2) == round(124.0 / 18.0, 2)

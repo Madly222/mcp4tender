@@ -28,7 +28,8 @@ def _uploads_dir(request):
 
 
 @router.get("/app/partners")
-def pool(request: Request, q: str = "", partner: str = "", ptype: str = "", page: int = 1):
+def pool(request: Request, q: str = "", partner: str = "", ptype: str = "", page: int = 1,
+         msg: str = ""):
     conn = request.state.conn
     init_partner_schema(conn)
     where, args = ["active = 1"], []
@@ -64,7 +65,12 @@ def pool(request: Request, q: str = "", partner: str = "", ptype: str = "", page
         pager = ('<div class="fb" style="justify-content:space-between;padding:12px 15px;'
                  f'border-top:1px solid var(--line)">{prev}'
                  f'<span class="num">Page {page} of {pages} · {total} products</span>{nxt}</div>')
-    body = R.pool_filters(q, partner, partners, ptype, types) + R.offers_table(rows) + pager
+    banner = ""
+    if msg:
+        banner = (f'<div style="margin-bottom:14px;padding:10px 14px;border-radius:10px;'
+                  f'font-size:13px;background:var(--ok-weak);border:1px solid var(--ok-line);'
+                  f'color:var(--ok)">{_e(msg)}</div>')
+    body = banner + R.pool_filters(q, partner, partners, ptype, types) + R.offers_table(rows) + pager
     return render(request, "Partners", body, heading="Product pool", heading_icon="archive",
                   lede=f"{total} products from {len(partners)} partner(s)")
 
@@ -155,10 +161,28 @@ async def confirm_submit(request: Request, sid: int):
     fx = request.state.store.get("suppliers.fx_rates", {}) or {}
     try:
         report = ingest_workbook(conn, st["path"], profile, fx)
-        total = sum(v.get("products", 0) for v in report["sheets"].values()
-                    if isinstance(v, dict))
-        msg = f"imported {total} products"
+        total = 0
+        unparsed = 0
+        skipped = []
+        for sheet, v in report["sheets"].items():
+            if not isinstance(v, dict):
+                continue
+            if "skipped" in v:
+                skipped.append(sheet)
+                continue
+            total += v.get("products", 0)
+            unparsed += v.get("unparsed", 0)
+        bits = [f"imported {total} products"]
+        if unparsed:
+            bits.append(f"{unparsed} rows had no price/article")
+        if skipped:
+            bits.append(f"skipped sheets: {', '.join(skipped)}")
+        msg = "; ".join(bits)
     except Exception as exc:
-        msg = f"already imported or failed: {type(exc).__name__}"
+        name = type(exc).__name__
+        msg = ("this exact file was already imported"
+               if name == "IntegrityError" else f"import failed: {name}")
     pstore.drop_staging(conn, sid)
-    return RedirectResponse(f"/app/partners?q=&partner={partner}", status_code=303)
+    from urllib.parse import quote
+    return RedirectResponse(f"/app/partners?partner={quote(partner)}&msg={quote(msg)}",
+                            status_code=303)

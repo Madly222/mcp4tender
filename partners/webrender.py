@@ -63,7 +63,7 @@ def confirm_form(staging_id, partner, detected):
                 rows.append(
                     f'<div class="pref-h"><span>{_e(flabel)}</span>'
                     f'{_select(f"map_{i}_{field}", labels, cols.get(field, ""))}</div>')
-            cur = _select_currency(f"cur_{i}")
+            cur = _select_currency(f"cur_{i}", det.get("cost_currency", "USD"))
             rows.append(f'<div class="pref-h"><span>Cost currency</span>{cur}</div>')
         rows.append("</div></div>")
     return (
@@ -73,8 +73,8 @@ def confirm_form(staging_id, partner, detected):
         '<button class="btn">Confirm &amp; import products</button></div></form>')
 
 
-def _select_currency(name):
-    opts = [f'<option value="{c}"{" selected" if c == "USD" else ""}>{c}</option>'
+def _select_currency(name, chosen="USD"):
+    opts = [f'<option value="{c}"{" selected" if c == chosen else ""}>{c}</option>'
             for c in CURRENCIES]
     return f'<select name="{_e(name)}">' + "".join(opts) + "</select>"
 
