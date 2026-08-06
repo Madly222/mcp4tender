@@ -7,6 +7,7 @@ import time
 import openpyxl
 
 from partners.normalize import clean_text, norm_label, norm_mpn, to_number
+from partners.categorize import classify
 
 
 def file_sha256(path):
@@ -91,13 +92,18 @@ def _build_offer(ws, row, colmap, sheet_cfg, crumbs, level):
         val = to_number(_cell(ws, row, colmap, field))
         if val is not None:
             extra[field] = val
+    description = clean_text(_cell(ws, row, colmap, "description"))
+    category_path = _crumb_path(crumbs, level)
+    ptype, tsource = classify(description, category_path)
     return {
         "row_no": row,
         "brand": clean_text(_cell(ws, row, colmap, "brand")),
         "mpn": mpn,
         "mpn_norm": norm_mpn(mpn),
-        "description": clean_text(_cell(ws, row, colmap, "description")),
-        "category_path": _crumb_path(crumbs, level),
+        "description": description,
+        "category_path": category_path,
+        "product_type": ptype,
+        "type_source": tsource,
         "price_original": price_original,
         "currency": currency,
         "price_usd": price_usd,
@@ -162,11 +168,13 @@ def ingest_workbook(conn, path, profile):
         for off in offers:
             conn.execute(
                 "INSERT INTO partner_offers(file_id, partner, sheet, row_no, brand, mpn, "
-                "mpn_norm, description, category_path, price_original, currency, price_usd, "
+                "mpn_norm, description, category_path, product_type, type_source, "
+                "price_original, currency, price_usd, "
                 "promo_usd, warranty, stock, extra_json, created_at) "
-                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (file_id, partner, name, off["row_no"], off["brand"], off["mpn"],
                  off["mpn_norm"], off["description"], off["category_path"],
+                 off["product_type"], off["type_source"],
                  off["price_original"], off["currency"], off["price_usd"], off["promo_usd"],
                  off["warranty"], off["stock"], off["extra_json"], now))
         report["sheets"][name] = stats

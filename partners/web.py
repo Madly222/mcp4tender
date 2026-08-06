@@ -27,13 +27,16 @@ def _uploads_dir(request):
 
 
 @router.get("/app/partners")
-def pool(request: Request, q: str = "", partner: str = "", page: int = 1):
+def pool(request: Request, q: str = "", partner: str = "", ptype: str = "", page: int = 1):
     conn = request.state.conn
     init_partner_schema(conn)
     where, args = [], []
     if partner:
         where.append("partner = ?")
         args.append(partner)
+    if ptype:
+        where.append("product_type = ?")
+        args.append(ptype)
     if q:
         like = f"%{q.strip()}%"
         where.append("(brand LIKE ? OR mpn LIKE ? OR description LIKE ? OR category_path LIKE ?)")
@@ -46,10 +49,13 @@ def pool(request: Request, q: str = "", partner: str = "", page: int = 1):
         f"price_usd IS NULL, price_usd LIMIT ? OFFSET ?",
         args + [PER_PAGE, (page - 1) * PER_PAGE]).fetchall()
     partners = pstore.list_partners(conn)
+    types = [r["product_type"] for r in conn.execute(
+        "SELECT product_type, COUNT(*) n FROM partner_offers WHERE product_type IS NOT NULL "
+        "GROUP BY product_type ORDER BY n DESC").fetchall()]
     pages = max(1, (total + PER_PAGE - 1) // PER_PAGE)
     pager = ""
     if pages > 1:
-        qs = f"q={_e(q)}&partner={_e(partner)}&"
+        qs = f"q={_e(q)}&partner={_e(partner)}&ptype={_e(ptype)}&"
         prev = (f'<a class="btn ghost sm" href="/app/partners?{qs}page={page - 1}">Previous</a>'
                 if page > 1 else "<span></span>")
         nxt = (f'<a class="btn ghost sm" href="/app/partners?{qs}page={page + 1}">Next</a>'
@@ -57,7 +63,7 @@ def pool(request: Request, q: str = "", partner: str = "", page: int = 1):
         pager = ('<div class="fb" style="justify-content:space-between;padding:12px 15px;'
                  f'border-top:1px solid var(--line)">{prev}'
                  f'<span class="num">Page {page} of {pages} · {total} products</span>{nxt}</div>')
-    body = R.pool_filters(q, partner, partners) + R.offers_table(rows) + pager
+    body = R.pool_filters(q, partner, partners, ptype, types) + R.offers_table(rows) + pager
     return render(request, "Partners", body, heading="Product pool", heading_icon="archive",
                   lede=f"{total} products from {len(partners)} partner(s)")
 

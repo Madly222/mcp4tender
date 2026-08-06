@@ -52,9 +52,19 @@ price_usd NULL for now (wire to suppliers.fx_rates at stage 6).
 
 ## Stages
 1-4 intake / header detection / profile / normalized catalog — DONE.
-5 categorize product-type to the CPV/spec taxonomy — NEXT.
+5 categorize product-type — DONE (from type, not CPV, per Victor). partners/categorize.py
+  TYPE_RULES: ordered (type, keywords, where in path|desc|both); first match wins, so ORDER
+  MATTERS (Case Fan must precede the broad CPU-Cooler "|coolers|" rule). Matching is
+  delimiter-safe: path is normalized to "|seg|seg|" splitting ONLY on " / " because a segment
+  label can contain a literal "/" (e.g. "Case Fan/Fan Control"); path keywords are "|ram|" style,
+  desc keywords are plain words. A rule match => type_source="rule" (the reliable cross-partner
+  join key). No rule => fall back to the partner's own top category as the type,
+  type_source="path" (grouping only works within that partner; shown dimmed in the pool). On
+  Accent: 100% typed, 93% by rule. product_type/type_source are columns on partner_offers
+  (init_partner_schema migrates them onto old tables via ADD COLUMN). Set at ingest; CLI
+  `categorize` re-runs classify on all rows after editing the rules. Pool has a Type filter.
 6 supersede old offers on re-ingest + fx for non-USD partners — NEXT.
-7 top-3 cheapest partners per MPN (or category+spec) — NEXT.
+7 top-3 cheapest partners per MPN (or type+spec) — NEXT (needs >1 partner loaded).
 
 ## Dependency
 openpyxl (NOT yet used elsewhere server-side — the branch installs it).

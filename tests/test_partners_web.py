@@ -87,7 +87,7 @@ def test_upload_then_confirm_then_pool_shows_products(tmp_path):
 
     pool = c.get("/app/partners").text
     assert "RGB FLOW" in pool and "XDC-RF120B" in pool
-    assert "PC COMPONENTS / CASE / SHARKOON" in pool
+    assert "PC Case" in pool and "Case Fan" in pool
 
 
 def test_saved_profile_is_reused_and_search_filters(tmp_path):
@@ -107,3 +107,18 @@ def test_saved_profile_is_reused_and_search_filters(tmp_path):
 
     hit = c.get("/app/partners?q=DEEPCOOL").text
     assert "XDC-RF120B" in hit and "RGB FLOW" not in hit
+
+
+def test_pool_shows_type_and_filters_by_it(tmp_path):
+    c = _client(tmp_path)
+    up = c.post("/app/partners/upload", data={"partner": "Accent"},
+                files={"file": ("p.xlsx", _xlsx_bytes(), "application/octet-stream")})
+    sid = up.headers["location"].rsplit("/", 1)[-1]
+    form = {"partner": "Accent", "sheet_0": "PriceList", "ingest_0": "on",
+            "map_0_brand": "brand", "map_0_mpn": "p/n", "map_0_description": "description",
+            "map_0_cost": "dealer b, usd", "cur_0": "USD"}
+    c.post(f"/app/partners/confirm/{sid}", data=form)
+    page = c.get("/app/partners").text
+    assert "Case Fan" in page and ">Type<" in page
+    only = c.get("/app/partners?ptype=Case Fan").text
+    assert "XDC-RF120B" in only and "RGB FLOW" not in only

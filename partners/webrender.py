@@ -79,17 +79,22 @@ def _select_currency(name):
     return f'<select name="{_e(name)}">' + "".join(opts) + "</select>"
 
 
-def pool_filters(q, partner, partners):
-    opts = ['<option value="">All partners</option>']
+def pool_filters(q, partner, partners, ptype="", types=()):
+    popts = ['<option value="">All partners</option>']
     for name, n in partners:
         sel = " selected" if name == partner else ""
-        opts.append(f'<option value="{_e(name)}"{sel}>{_e(name)} ({n})</option>')
+        popts.append(f'<option value="{_e(name)}"{sel}>{_e(name)} ({n})</option>')
+    topts = ['<option value="">All types</option>']
+    for t in types:
+        sel = " selected" if t == ptype else ""
+        topts.append(f'<option value="{_e(t)}"{sel}>{_e(t)}</option>')
     return (
         '<form method="get" action="/app/partners" class="filters">'
         '<div class="fb">'
         f'<input class="grow" type="text" name="q" value="{_e(q)}" '
         'placeholder="brand, article or description">'
-        f'<select name="partner">' + "".join(opts) + "</select>"
+        '<select name="partner">' + "".join(popts) + "</select>"
+        '<select name="ptype">' + "".join(topts) + "</select>"
         '<button class="btn">Search</button>'
         '<a class="btn ghost" href="/app/partners">Clear</a>'
         '<a class="btn" href="/app/partners/upload">Upload price-list</a>'
@@ -100,18 +105,20 @@ def offers_table(rows):
     if not rows:
         return '<p class="pref-help">No products yet. Upload a partner price-list to start.</p>'
     out = ['<div class="tbl-wrap"><table class="tbl"><thead><tr><th>Partner</th><th>Brand</th>'
-           '<th>Article</th><th>Description</th><th>Category</th><th>Cost</th>'
+           '<th>Article</th><th>Description</th><th>Type</th><th>Cost</th>'
            '<th>Promo</th></tr></thead><tbody>']
     for r in rows:
         promo = f'${r["promo_usd"]:.2f}' if r["promo_usd"] is not None else ""
         cost = f'${r["price_usd"]:.2f}' if r["price_usd"] is not None else (
             f'{r["price_original"]} {_e(r["currency"] or "")}'
             if r["price_original"] is not None else "")
+        ptype = r["product_type"] or ""
+        soft = ' style="opacity:.6"' if r["type_source"] == "path" else ""
         out.append(
             f'<tr><td>{_e(r["partner"])}</td><td>{_e(r["brand"] or "")}</td>'
             f'<td class="num">{_e(r["mpn"] or "")}</td>'
-            f'<td style="max-width:420px">{_e((r["description"] or "")[:160])}</td>'
-            f'<td class="mut">{_e(r["category_path"] or "")}</td>'
+            f'<td style="max-width:380px">{_e((r["description"] or "")[:150])}</td>'
+            f'<td{soft}>{_e(ptype)}</td>'
             f'<td class="num">{cost}</td><td class="num">{promo}</td></tr>')
     out.append("</tbody></table></div>")
     return "".join(out)

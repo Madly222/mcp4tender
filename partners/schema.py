@@ -63,7 +63,17 @@ DDL = (
 )
 
 
+def _add_column_if_missing(conn, table, column, decl):
+    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in cols:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def init_partner_schema(conn):
     for stmt in DDL:
         conn.execute(stmt)
+    _add_column_if_missing(conn, "partner_offers", "product_type", "TEXT")
+    _add_column_if_missing(conn, "partner_offers", "type_source", "TEXT")
+    conn.execute("CREATE INDEX IF NOT EXISTS ix_partner_offers_type "
+                 "ON partner_offers(product_type)")
     conn.commit()

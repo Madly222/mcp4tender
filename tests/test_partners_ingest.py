@@ -110,3 +110,50 @@ def test_resending_the_same_file_is_rejected(tmp_path):
     ingest_workbook(conn, str(f), get_profile("accent"))
     with pytest.raises(sqlite3.IntegrityError):
         ingest_workbook(conn, str(f), get_profile("accent"))
+
+
+def test_classify_type_from_keywords_and_path():
+    from partners.categorize import classify
+    assert classify("MikroTik CRS326 24-port Switch", "NETWORK EQUIPMENT / Switches")[0] == "Network Switch"
+    assert classify("8GB DDR3-1600 Kingston", "PC COMPONENTS / RAM / DDR3") == ("RAM", "rule")
+    assert classify("APC Back-UPS 650VA", "UPS / Line-Interactive")[0] == "UPS"
+    # no rule -> partner top category as a labelled fallback
+    t, src = classify("Some obscure gadget", "SMART HOME / Sensors")
+    assert t == "Smart Home" and src == "path"
+    assert classify(None, None) == (None, None)
+
+
+def test_offers_get_a_product_type_on_ingest(tmp_path):
+    f = tmp_path / "a.xlsx"
+    _make_book(f)
+    conn = _conn(tmp_path)
+    ingest_workbook(conn, str(f), get_profile("accent"))
+    r = conn.execute("SELECT product_type, type_source FROM partner_offers "
+                     "WHERE mpn='XDC-RF120B'").fetchone()
+    assert r["product_type"] == "Case Fan" and r["type_source"] == "rule"
+    typed = conn.execute("SELECT COUNT(*) c FROM partner_offers "
+                         "WHERE product_type IS NOT NULL").fetchone()["c"]
+    assert typed == 4
+
+
+def test_reclassify_and_type_columns_migrate_onto_old_tables(tmp_path):
+    import sqlite3
+    from partners.categorize import reclassify_all
+    from partners.schema import init_partner_schema
+    dbp = tmp_path / "old.db"
+    conn = sqlite3.connect(dbp)
+    conn.row_factory = sqlite3.Row
+    # simulate a pre-stage-5 table without the type columns
+    conn.execute("CREATE TABLE partner_offers (id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                 "file_id INTEGER, partner TEXT, sheet TEXT, row_no INTEGER, brand TEXT, "
+                 "mpn TEXT, mpn_norm TEXT, description TEXT, category_path TEXT, "
+                 "price_original REAL, currency TEXT, price_usd REAL, promo_usd REAL, "
+                 "warranty TEXT, stock TEXT, extra_json TEXT, created_at REAL)")
+    conn.execute("INSERT INTO partner_offers(partner, description, category_path) "
+                 "VALUES('X','24-port Switch','NETWORK / Switches')")
+    conn.commit()
+    init_partner_schema(conn)
+    out = reclassify_all(conn)
+    assert out["typed"] == 1
+    row = conn.execute("SELECT product_type FROM partner_offers").fetchone()
+    assert row["product_type"] == "Network Switch"

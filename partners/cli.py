@@ -53,6 +53,17 @@ def cmd_sample(args):
     return 0
 
 
+def cmd_categorize(args):
+    from partners.categorize import reclassify_all
+    conn = _connect(args.db)
+    r = reclassify_all(conn)
+    pct = (r["typed"] * 100 // r["total"]) if r["total"] else 0
+    rule_pct = (r["by_rule"] * 100 // r["total"]) if r["total"] else 0
+    print(f"reclassified {r['total']} offers: typed {r['typed']} ({pct}%), "
+          f"by rule {r['by_rule']} ({rule_pct}%), path-fallback {r['typed'] - r['by_rule']}")
+    return 0
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(prog="partners")
     ap.add_argument("--db", default="tenderengine.db")
@@ -64,6 +75,8 @@ def main(argv=None):
     s = sub.add_parser("sample")
     s.add_argument("-n", type=int, default=10)
     s.set_defaults(func=cmd_sample)
+    z = sub.add_parser("categorize")
+    z.set_defaults(func=cmd_categorize)
     args = ap.parse_args(argv)
     return args.func(args)
 
