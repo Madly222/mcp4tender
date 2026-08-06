@@ -8,6 +8,7 @@ from fastapi.responses import RedirectResponse
 
 from partners import store as pstore
 from partners import webrender as R
+from partners import rank
 from partners.detect import detect_workbook
 from partners.ingest import file_sha256, ingest_workbook
 from partners.schema import init_partner_schema
@@ -66,6 +67,24 @@ def pool(request: Request, q: str = "", partner: str = "", ptype: str = "", page
     body = R.pool_filters(q, partner, partners, ptype, types) + R.offers_table(rows) + pager
     return render(request, "Partners", body, heading="Product pool", heading_icon="archive",
                   lede=f"{total} products from {len(partners)} partner(s)")
+
+
+@router.get("/app/partners/compare")
+def compare(request: Request, mpn: str = "", q: str = "", ptype: str = ""):
+    conn = request.state.conn
+    init_partner_schema(conn)
+    if mpn:
+        offers = rank.top_partners(conn, mpn, limit=3)
+        body = ('<a class="btn ghost sm" href="/app/partners/compare">&larr; all comparisons</a>'
+                '<div class="gap"></div>' + R.compare_view(offers))
+        heading = "Top partners"
+        lede = "Cheapest three partners for this article, by regular dealer price."
+    else:
+        rows = rank.multi_partner_products(conn, q=q, ptype=ptype)
+        body = R.multi_partner_list(rows, q=q, ptype=ptype)
+        heading = "Compare across partners"
+        lede = "Articles carried by more than one partner — pick one to see the top 3."
+    return render(request, "Compare", body, heading=heading, heading_icon="sliders", lede=lede)
 
 
 @router.get("/app/partners/upload")

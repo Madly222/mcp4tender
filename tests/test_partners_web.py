@@ -122,3 +122,21 @@ def test_pool_shows_type_and_filters_by_it(tmp_path):
     assert "Case Fan" in page and ">Type<" in page
     only = c.get("/app/partners?ptype=Case Fan").text
     assert "XDC-RF120B" in only and "RGB FLOW" not in only
+
+
+def test_compare_page_shows_top3_across_partners(tmp_path):
+    c = _client(tmp_path)
+    for partner in ("Accent", "PartnerB"):
+        up = c.post("/app/partners/upload", data={"partner": partner},
+                    files={"file": ("p.xlsx", _xlsx_bytes(), "application/octet-stream")})
+        sid = up.headers["location"].rsplit("/", 1)[-1]
+        form = {"partner": partner, "sheet_0": "PriceList", "ingest_0": "on",
+                "map_0_brand": "brand", "map_0_mpn": "p/n", "map_0_description": "description",
+                "map_0_cost": "dealer b, usd", "cur_0": "USD"}
+        c.post(f"/app/partners/confirm/{sid}", data=form)
+    # both partners carry the same articles -> multi-partner list is non-empty
+    lst = c.get("/app/partners/compare").text
+    assert "RGBSLIDERBK" in lst or "XDC-RF120B" in lst
+    # top-3 for one shared article shows both partners
+    cmp = c.get("/app/partners/compare?mpn=XDC-RF120B").text
+    assert "Accent" in cmp and "PartnerB" in cmp and "Dealer price" in cmp

@@ -1,6 +1,6 @@
 # Partner catalog (feature branch: partners-catalog)
 
-Goal: turn the varied Excel price-lists partners send into one queryable catalog,
+Goal (stages 1-7 all DONE): turn the varied Excel price-lists partners send into one catalog,
 then answer "top-3 cheapest partners for this product". Pure code, no AI/RAG — the
 join key is BRAND + P/N (MPN). Keyword search on the description is the fallback for
 rows with no MPN.
@@ -74,7 +74,14 @@ price_usd NULL for now (wire to suppliers.fx_rates at stage 6).
   cost (price_usd); promo is a note, NOT the ranking price (Victor's call — promo is temporary
   and may lapse by delivery). Identical re-send still rejected by the partner_files sha256 index;
   a CHANGED file supersedes.
-7 top-3 cheapest partners per MPN (or type+spec) — NEXT (needs >1 partner loaded).
+7 top-3 cheapest partners per MPN — DONE (Jul 25). partners/rank.py: cheapest_per_partner
+  (active offers for an mpn_norm, one row per partner = its lowest regular price_usd, NULLs last),
+  top_partners = the 3 lowest; multi_partner_products lists articles carried by >1 partner (the
+  sourcing-relevant set) with q/type filters. Ranks by REGULAR dealer price_usd; promo is a shown
+  note, never the ranking key. /app/partners/compare: no mpn => the multi-partner list; ?mpn=X =>
+  the top-3 table with vs-cheapest deltas and a "saves $ vs next" line. Each pool article links to
+  its compare page. All ranking is active=1 only, so a superseded cheaper price never wins.
+  Tested end to end with two synthetic partners (real cross-partner proof needs a 2nd real file).
 
 ## Dependency
 openpyxl (NOT yet used elsewhere server-side — the branch installs it).
