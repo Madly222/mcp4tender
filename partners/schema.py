@@ -1,0 +1,69 @@
+from __future__ import annotations
+
+
+DDL = (
+    """
+    CREATE TABLE IF NOT EXISTS partner_files (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        partner TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        sha256 TEXT NOT NULL,
+        received_at REAL NOT NULL,
+        sheets_json TEXT NOT NULL DEFAULT '[]',
+        status TEXT NOT NULL DEFAULT 'ingested',
+        report_json TEXT NOT NULL DEFAULT '{}'
+    )
+    """,
+    "CREATE UNIQUE INDEX IF NOT EXISTS ix_partner_files_hash ON partner_files(partner, sha256)",
+    """
+    CREATE TABLE IF NOT EXISTS partner_offers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        file_id INTEGER NOT NULL,
+        partner TEXT NOT NULL,
+        sheet TEXT NOT NULL,
+        row_no INTEGER NOT NULL,
+        brand TEXT,
+        mpn TEXT,
+        mpn_norm TEXT,
+        description TEXT,
+        category_path TEXT,
+        price_original REAL,
+        currency TEXT,
+        price_usd REAL,
+        promo_usd REAL,
+        warranty TEXT,
+        stock TEXT,
+        extra_json TEXT NOT NULL DEFAULT '{}',
+        created_at REAL NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_partner_offers_mpn ON partner_offers(mpn_norm)",
+    "CREATE INDEX IF NOT EXISTS ix_partner_offers_partner ON partner_offers(partner)",
+    "CREATE INDEX IF NOT EXISTS ix_partner_offers_price ON partner_offers(price_usd)",
+    "CREATE INDEX IF NOT EXISTS ix_partner_offers_file ON partner_offers(file_id)",
+    """
+    CREATE TABLE IF NOT EXISTS partner_profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        partner TEXT NOT NULL UNIQUE,
+        profile_json TEXT NOT NULL,
+        updated_at REAL NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS partner_staging (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        partner TEXT NOT NULL,
+        filename TEXT NOT NULL,
+        path TEXT NOT NULL,
+        sha256 TEXT NOT NULL,
+        detected_json TEXT NOT NULL DEFAULT '{}',
+        created_at REAL NOT NULL
+    )
+    """,
+)
+
+
+def init_partner_schema(conn):
+    for stmt in DDL:
+        conn.execute(stmt)
+    conn.commit()

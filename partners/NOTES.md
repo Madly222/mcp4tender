@@ -1,0 +1,68 @@
+# Partner catalog (feature branch: partners-catalog)
+
+Goal: turn the varied Excel price-lists partners send into one queryable catalog,
+then answer "top-3 cheapest partners for this product". Pure code, no AI/RAG — the
+join key is BRAND + P/N (MPN). Keyword search on the description is the fallback for
+rows with no MPN.
+
+## Isolation / how to remove the whole feature
+Almost everything lives under `partners/` and writes only `partner_*` tables.
+Two lines in core files wire it in:
+  - web/server.py: a try/except include of partners.web.router (safe if the module
+    is gone — the except swallows the ImportError).
+  - web/user/nav.py: the {"href": "/app/partners", ...} entry in the "Everything" group.
+To remove: `git rm -r partners/ tests/test_partners_ingest.py tests/test_partners_web.py`,
+delete the nav entry, delete the try/except block in server.py, and drop the
+partner_* tables. Nothing else imports partners.
+
+## The idea that tames the format chaos
+The engine is generic; each partner's quirks live in ONE small profile. Profiles are
+stored in the DB (partner_profiles) and edited through the UI; the code profile in
+partners/profiles/accent.py is a built-in default/fallback. Images/banners don't
+matter: reading cell VALUES ignores the picture layer. The only real work is locating
+the header row and mapping columns — both come from detection + your confirmation.
+
+## The flow (/app/partners)
+1. Upload a partner's .xlsx with a partner name.
+2. detect.py finds each sheet's header row and PROPOSES a column mapping using an
+   EN/RO/RU synonym table; it also guesses which sheets to import.
+3. Confirm screen: you fix any wrong column via dropdowns and toggle which sheets to
+   import. Detection is a guess (e.g. on Accent it picks promo="акция" instead of
+   "promo dealer, usd") — the confirm step is where you correct it.
+4. On confirm the mapping is saved as that partner's profile and the file is ingested
+   into partner_offers. Next file from the same partner reuses the saved profile.
+5. Product pool: paginated, searchable by partner / brand / article / description.
+
+## Data model
+partner_files (intake, unique on partner+sha256 so a re-sent file is rejected),
+partner_offers (normalized rows: brand, mpn, mpn_norm, description, category_path,
+price_original, currency, price_usd, promo_usd, ...), partner_profiles (saved mapping
+per partner), partner_staging (an uploaded file awaiting confirmation). Uploaded files
+are written to <db-dir>/partner_uploads/.
+
+category_path is built from the sheet's Excel OUTLINE levels (exact hierarchy, e.g.
+"PC COMPONENTS / CASE / SHARKOON"), not guessed.
+
+## Canonical profile fields (what the engine understands)
+brand, mpn, description, cost (the price WE pay), promo, price_lei, retail_usd,
+warranty, stock. Profile: {partner, sheets:[{name, ingest, header_tokens, columns
+{field: header-label}, cost_field:"cost", promo_field:"promo", cost_currency,
+category:"outline"} | {name, ingest:False, reason}]}. cost_currency!=USD leaves
+price_usd NULL for now (wire to suppliers.fx_rates at stage 6).
+
+## Stages
+1-4 intake / header detection / profile / normalized catalog — DONE.
+5 categorize product-type to the CPV/spec taxonomy — NEXT.
+6 supersede old offers on re-ingest + fx for non-USD partners — NEXT.
+7 top-3 cheapest partners per MPN (or category+spec) — NEXT.
+
+## Dependency
+openpyxl (NOT yet used elsewhere server-side — the branch installs it).
+python-multipart is already present (used by the settings forms).
+
+## Run without the UI (optional)
+    .venv/bin/python -m partners.cli --db tenderengine.db ingest --partner accent <file.xlsx>
+    .venv/bin/python -m partners.cli --db tenderengine.db sample -n 10
+
+Accent PriceList_23-10-31.xlsx: 3787 products, 501 category rows, 0 unparsed;
+Used-Refurb + ASC skipped.

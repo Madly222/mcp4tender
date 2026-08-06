@@ -21,6 +21,7 @@ NAV = [
     ("Everything", [
         {"href": "/app/search", "label": "Search all tenders", "icon": "search"},
         {"href": "/app/archive", "label": "Archive", "icon": "archive"},
+        {"href": "/app/partners", "label": "Partners", "icon": "archive"},
         {"href": "/app/costs", "label": "AI spending", "icon": "sliders"},
         {"href": "/app/preferences", "label": "Preferences", "icon": "sliders"},
         {"href": "/app/settings", "label": "Company settings", "icon": "gear"},

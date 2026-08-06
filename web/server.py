@@ -78,4 +78,9 @@ def create_app(db_path):
     app.include_router(routes_prefs.router)
     app.include_router(user_settings_routes.router)
     app.include_router(routes_planning.router)
+    try:
+        from partners.web import router as partners_router
+        app.include_router(partners_router)
+    except Exception:
+        pass
     return app
