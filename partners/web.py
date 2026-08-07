@@ -93,6 +93,54 @@ def compare(request: Request, mpn: str = "", q: str = "", ptype: str = ""):
     return render(request, "Compare", body, heading=heading, heading_icon="sliders", lede=lede)
 
 
+@router.get("/app/partners/profile/{partner}")
+def edit_profile(request: Request, partner: str):
+    conn = request.state.conn
+    init_partner_schema(conn)
+    path = pstore.latest_upload_path(conn, partner)
+    if not path or not os.path.exists(path):
+        body = ('<p class="pref-help">The original file for this partner is no longer on disk. '
+                'Please upload it again to fix the mapping.</p>'
+                '<a class="btn" href="/app/partners/upload">Upload price-list</a>')
+        return render(request, "Edit mapping", body, heading=f"Edit — {partner}",
+                      heading_icon="sliders")
+    detected = detect_workbook(path)
+    saved = pstore.load_profile(conn, partner)
+    body = R.edit_form(partner, detected, saved)
+    return render(request, "Edit mapping", body, heading=f"Edit mapping — {_e(partner)}",
+                  heading_icon="sliders",
+                  lede="Fix which column is the price, then re-import the stored file.")
+
+
+@router.post("/app/partners/profile/{partner}")
+async def save_profile_edit(request: Request, partner: str):
+    conn = request.state.conn
+    if request.state.readonly:
+        return RedirectResponse("/app/partners", status_code=303)
+    path = pstore.latest_upload_path(conn, partner)
+    if not path or not os.path.exists(path):
+        return RedirectResponse("/app/partners", status_code=303)
+    form = await request.form()
+    detected = detect_workbook(path)
+    profile = _profile_from_form(form, partner, detected)
+    pstore.save_profile(conn, profile)
+    fx = request.state.store.get("suppliers.fx_rates", {}) or {}
+    from urllib.parse import quote
+    from partners.ingest import reimport
+    result = reimport(conn, partner, profile, fx)
+    if "error" in result:
+        msg = result["error"]
+    else:
+        total = sum(v.get("products", 0) for v in result["sheets"].values()
+                    if isinstance(v, dict))
+        unparsed = sum(v.get("unparsed", 0) for v in result["sheets"].values()
+                       if isinstance(v, dict))
+        msg = f"re-imported {total} products" + (
+            f"; {unparsed} rows had no price" if unparsed else "")
+    return RedirectResponse(f"/app/partners?partner={quote(partner)}&msg={quote(msg)}",
+                            status_code=303)
+
+
 @router.get("/app/partners/upload")
 def upload_page(request: Request):
     return render(request, "Upload price-list", R.upload_form(),
@@ -179,9 +227,8 @@ async def confirm_submit(request: Request, sid: int):
             bits.append(f"skipped sheets: {', '.join(skipped)}")
         msg = "; ".join(bits)
     except Exception as exc:
-        name = type(exc).__name__
-        msg = ("this exact file was already imported"
-               if name == "IntegrityError" else f"import failed: {name}")
+        text = str(exc)
+        msg = text if "already imported" in text else f"import failed: {type(exc).__name__}"
     pstore.drop_staging(conn, sid)
     from urllib.parse import quote
     return RedirectResponse(f"/app/partners?partner={quote(partner)}&msg={quote(msg)}",

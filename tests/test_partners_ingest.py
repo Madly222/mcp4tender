@@ -108,7 +108,7 @@ def test_resending_the_same_file_is_rejected(tmp_path):
     _make_book(f)
     conn = _conn(tmp_path)
     ingest_workbook(conn, str(f), get_profile("accent"))
-    with pytest.raises(sqlite3.IntegrityError):
+    with pytest.raises(ValueError):
         ingest_workbook(conn, str(f), get_profile("accent"))
 
 
@@ -249,3 +249,54 @@ def test_lei_only_prices_import_and_convert_to_usd(tmp_path):
                      "WHERE mpn='01780'").fetchone()
     assert r["price_original"] == 124.0 and r["currency"] == "MDL"
     assert round(r["price_usd"], 2) == round(124.0 / 18.0, 2)
+
+
+def test_cyrillic_dealer_price_header_is_detected_as_cost():
+    from partners.detect import _match_field
+    from partners.normalize import norm_label
+    for h in ["ЦенаD, USD", "Цена Dealer", "ЦенаD USD"]:
+        assert _match_field(norm_label(h))[0] == "cost"
+
+
+def test_no_price_row_is_not_a_product(tmp_path):
+    import openpyxl
+    f = tmp_path / "h.xlsx"
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "PriceList"
+    for c, v in enumerate(["", "BRAND", "P/N", "Description", "", "", "", "Dealer B, USD"], 1):
+        ws.cell(7, c, v)
+    ws.cell(8, 3, "MONITORS"); ws.cell(8, 4, "Monitors")   # header-ish, no price -> dropped
+    ws.cell(9, 2, "DELL"); ws.cell(9, 3, "P2425"); ws.cell(9, 4, "Dell 24"); ws.cell(9, 8, 199)
+    wb.save(f)
+    conn = _conn(tmp_path)
+    ingest_workbook(conn, str(f), get_profile("accent"))
+    rows = conn.execute("SELECT mpn FROM partner_offers").fetchall()
+    mpns = {r["mpn"] for r in rows}
+    assert "P2425" in mpns and "MONITORS" not in mpns
+
+
+def test_reimport_fixes_an_unmapped_price_without_reupload(tmp_path):
+    import openpyxl
+    f = tmp_path / "u.xlsx"
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "PRICE"
+    for c, v in enumerate(["Код", "Наименование", "ЦенаD, USD"], 1):
+        ws.cell(1, c, v)
+    ws.cell(2, 1, "226242"); ws.cell(2, 2, "Phone A"); ws.cell(2, 3, 56.0)
+    wb.save(f)
+    conn = _conn(tmp_path)
+    bad = {"partner": "Ultra", "sheets": [{"name": "PRICE", "ingest": True,
+           "header_tokens": ["код", "наименование"],
+           "columns": {"mpn": "код", "description": "наименование"},
+           "cost_field": "cost", "cost_currency": "USD", "category": "outline"}]}
+    ingest_workbook(conn, str(f), bad)
+    assert conn.execute("SELECT COUNT(*) c FROM partner_offers WHERE active=1").fetchone()["c"] == 0
+
+    from partners.ingest import reimport
+    good = {"partner": "Ultra", "sheets": [{"name": "PRICE", "ingest": True,
+            "header_tokens": ["код", "наименование"],
+            "columns": {"mpn": "код", "description": "наименование", "cost": "ценаd, usd"},
+            "cost_field": "cost", "cost_currency": "USD", "category": "outline"}]}
+    res = reimport(conn, "Ultra", good, {"USD->MDL": 18.0})
+    assert "error" not in res
+    priced = conn.execute("SELECT price_usd FROM partner_offers WHERE active=1").fetchall()
+    assert len(priced) == 1 and priced[0]["price_usd"] == 56.0
+    assert conn.execute("SELECT COUNT(*) c FROM partner_files").fetchone()["c"] == 1

@@ -143,7 +143,7 @@ def _ingest_sheet(ws, sheet_cfg, fx_rates):
         elif kind == "product":
             level = _outline_level(ws, row)
             offer = _build_offer(ws, row, colmap, sheet_cfg, crumbs, level, fx_rates)
-            if offer["price_original"] is None and not offer["mpn"]:
+            if offer["price_original"] is None:
                 stats["unparsed"] += 1
                 continue
             offers.append(offer)
@@ -151,24 +151,7 @@ def _ingest_sheet(ws, sheet_cfg, fx_rates):
     return offers, stats
 
 
-def ingest_workbook(conn, path, profile, fx_rates=None):
-    from partners.schema import init_partner_schema
-    init_partner_schema(conn)
-    partner = profile["partner"]
-    sha = file_sha256(path)
-    wb = openpyxl.load_workbook(path, data_only=True, read_only=False)
-    sheets = wb.sheetnames
-    report = {"partner": partner, "sheets": {}}
-    filename = path.rsplit("/", 1)[-1]
-    cur = conn.execute("INSERT INTO partner_files(partner, filename, sha256, received_at, "
-                       "sheets_json) VALUES(?,?,?,?,?)",
-                       (partner, filename, sha, time.time(), json.dumps(sheets)))
-    file_id = cur.lastrowid
-    now = time.time()
-    superseded = conn.execute(
-        "UPDATE partner_offers SET active=0 WHERE partner=? AND active=1",
-        (partner,)).rowcount
-    report["superseded"] = superseded
+def _write_offers(conn, wb, profile, file_id, partner, fx_rates, now, report):
     for sheet_cfg in profile["sheets"]:
         name = sheet_cfg["name"]
         if name not in wb.sheetnames:
@@ -191,8 +174,51 @@ def ingest_workbook(conn, path, profile, fx_rates=None):
                  off["price_original"], off["currency"], off["price_usd"], off["promo_usd"],
                  off["warranty"], off["stock"], off["extra_json"], now))
         report["sheets"][name] = stats
+
+
+def ingest_workbook(conn, path, profile, fx_rates=None, force=False):
+    from partners.schema import init_partner_schema
+    init_partner_schema(conn)
+    partner = profile["partner"]
+    sha = file_sha256(path)
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=False)
+    sheets = wb.sheetnames
+    report = {"partner": partner, "sheets": {}}
+    filename = path.rsplit("/", 1)[-1]
+    now = time.time()
+    existing = conn.execute("SELECT id FROM partner_files WHERE partner=? AND sha256=?",
+                            (partner, sha)).fetchone()
+    if existing and not force:
+        raise ValueError("this exact file was already imported")
+    conn.execute("UPDATE partner_offers SET active=0 WHERE partner=? AND active=1", (partner,))
+    if existing:
+        file_id = existing["id"]
+        conn.execute("DELETE FROM partner_offers WHERE file_id=?", (file_id,))
+        conn.execute("UPDATE partner_files SET received_at=?, sheets_json=?, upload_path=? "
+                     "WHERE id=?", (now, json.dumps(sheets), path, file_id))
+    else:
+        cur = conn.execute(
+            "INSERT INTO partner_files(partner, filename, sha256, received_at, sheets_json, "
+            "upload_path) VALUES(?,?,?,?,?,?)",
+            (partner, filename, sha, now, json.dumps(sheets), path))
+        file_id = cur.lastrowid
+    _write_offers(conn, wb, profile, file_id, partner, fx_rates, now, report)
     conn.execute("UPDATE partner_files SET report_json=? WHERE id=?",
                  (json.dumps(report, ensure_ascii=False), file_id))
     conn.commit()
     report["file_id"] = file_id
     return report
+
+
+def reimport(conn, partner, profile, fx_rates=None):
+    import os
+    from partners.schema import init_partner_schema
+    init_partner_schema(conn)
+    row = conn.execute(
+        "SELECT upload_path FROM partner_files WHERE partner=? ORDER BY received_at DESC "
+        "LIMIT 1", (partner,)).fetchone()
+    if not row or not row["upload_path"]:
+        return {"error": "no stored file for this partner — please upload it again"}
+    if not os.path.exists(row["upload_path"]):
+        return {"error": "the stored file is gone — please upload it again"}
+    return ingest_workbook(conn, row["upload_path"], profile, fx_rates, force=True)

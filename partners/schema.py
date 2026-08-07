@@ -75,6 +75,7 @@ def init_partner_schema(conn):
     _add_column_if_missing(conn, "partner_offers", "product_type", "TEXT")
     _add_column_if_missing(conn, "partner_offers", "type_source", "TEXT")
     _add_column_if_missing(conn, "partner_offers", "active", "INTEGER NOT NULL DEFAULT 1")
+    _add_column_if_missing(conn, "partner_files", "upload_path", "TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_partner_offers_type "
                  "ON partner_offers(product_type)")
     conn.execute("CREATE INDEX IF NOT EXISTS ix_partner_offers_active "

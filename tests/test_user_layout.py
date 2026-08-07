@@ -49,7 +49,7 @@ def test_shell_renders_with_nav_and_counts(tmp_path, monkeypatch):
     assert 'class="shell"' in h and 'href="/static/tokens.css' in h
     assert "Tender inbox" in h and "Qualified" in h and "Engine admin" in h
     assert "Today at a glance" in h
-    assert '<span class="badge num">1</span>' in h
+    assert '<span class="badge num" data-badge="inbox">1</span>' in h
 def test_admin_shares_the_same_tokens(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"tok.db"); conn.close()

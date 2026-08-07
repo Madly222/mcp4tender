@@ -140,3 +140,34 @@ def test_compare_page_shows_top3_across_partners(tmp_path):
     # top-3 for one shared article shows both partners
     cmp = c.get("/app/partners/compare?mpn=XDC-RF120B").text
     assert "Accent" in cmp and "PartnerB" in cmp and "Dealer price" in cmp
+
+
+def _cyr_xlsx_bytes():
+    import openpyxl, io
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = "PRICE"
+    for c, v in enumerate(["Код", "Наименование", "ЦенаD, USD"], 1):
+        ws.cell(1, c, v)
+    ws.cell(2, 1, "226242"); ws.cell(2, 2, "Phone A30"); ws.cell(2, 3, 56.0)
+    buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
+
+
+def test_edit_mapping_reimports_and_fixes_price(tmp_path):
+    c = _client(tmp_path)
+    up = c.post("/app/partners/upload", data={"partner": "Ultra"},
+                files={"file": ("ultra.xlsx", _cyr_xlsx_bytes(), "application/octet-stream")})
+    sid = up.headers["location"].rsplit("/", 1)[-1]
+    # simulate a bad confirm: price column NOT mapped to cost
+    c.post(f"/app/partners/confirm/{sid}",
+           data={"partner": "Ultra", "sheet_0": "PRICE", "ingest_0": "on",
+                 "map_0_mpn": "код", "map_0_description": "наименование", "cur_0": "USD"})
+    assert "226242" not in c.get("/app/partners?partner=Ultra").text  # nothing priced/imported
+
+    edit = c.get("/app/partners/profile/Ultra").text
+    assert "Save mapping" in edit and "ценаd, usd" in edit.lower()
+
+    c.post("/app/partners/profile/Ultra",
+           data={"partner": "Ultra", "sheet_0": "PRICE", "ingest_0": "on",
+                 "map_0_mpn": "код", "map_0_description": "наименование",
+                 "map_0_cost": "ценаd, usd", "cur_0": "USD"})
+    pool = c.get("/app/partners?partner=Ultra").text
+    assert "226242" in pool and "$56.00" in pool

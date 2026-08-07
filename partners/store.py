@@ -38,6 +38,13 @@ def list_partners(conn):
     return [(r["partner"], r["n"]) for r in rows]
 
 
+def latest_upload_path(conn, partner):
+    init_partner_schema(conn)
+    row = conn.execute("SELECT upload_path FROM partner_files WHERE partner=? "
+                       "ORDER BY received_at DESC LIMIT 1", (partner,)).fetchone()
+    return row["upload_path"] if row and row["upload_path"] else None
+
+
 def add_staging(conn, partner, filename, path, sha, detected):
     init_partner_schema(conn)
     cur = conn.execute(

@@ -42,6 +42,43 @@ def _select(name, options, chosen):
     return f'<select name="{_e(name)}">' + "".join(opts) + "</select>"
 
 
+def edit_form(partner, detected, saved_profile):
+    saved = {s["name"]: s for s in (saved_profile or {}).get("sheets", [])}
+    rows = [f'<input type="hidden" name="partner" value="{_e(partner)}">']
+    for i, sheet in enumerate(detected.get("sheets", [])):
+        name = sheet["name"]
+        det = sheet.get("detected")
+        labels = [x for x in (det["labels"] if det else []) if x]
+        scfg = saved.get(name, {})
+        cols = dict((det.get("columns") if det else {}) or {})
+        cols.update(scfg.get("columns", {}) or {})
+        cur_ccy = scfg.get("cost_currency") or (det.get("cost_currency", "USD") if det else "USD")
+        checked = " checked" if scfg.get("ingest", sheet.get("ingest")) else ""
+        rows.append(f'<input type="hidden" name="sheet_{i}" value="{_e(name)}">')
+        head = (f'header row {det["header_row"]}' if det else "no header found")
+        rows.append(
+            f'<div class="card" style="margin-bottom:14px"><div class="card-h">'
+            f'<h2>{_e(name)}</h2><span class="mut">{_e(head)} &middot; '
+            f'{sheet.get("rows", 0)} rows</span></div><div class="card-b">'
+            f'<label class="pref-h"><span>Import this sheet</span>'
+            f'<input type="checkbox" name="ingest_{i}"{checked}></label>')
+        if det:
+            for field, flabel in FIELD_LABELS:
+                rows.append(
+                    f'<div class="pref-h"><span>{_e(flabel)}</span>'
+                    f'{_select(f"map_{i}_{field}", labels, cols.get(field, ""))}</div>')
+            rows.append(f'<div class="pref-h"><span>Cost currency</span>'
+                        f'{_select_currency(f"cur_{i}", cur_ccy)}</div>')
+        rows.append("</div></div>")
+    return (
+        f'<form method="post" action="/app/partners/profile/{_e(partner)}" class="filters">'
+        f'<div class="fb" style="flex-direction:column;align-items:stretch;gap:14px">'
+        + "".join(rows) +
+        '<button class="btn">Save mapping &amp; re-import</button></div></form>'
+        '<p class="pref-help">Re-import reparses the last file you uploaded for this partner '
+        'with the corrected columns — no need to upload it again.</p>')
+
+
 def confirm_form(staging_id, partner, detected):
     rows = [f'<input type="hidden" name="partner" value="{_e(partner)}">']
     for i, sheet in enumerate(detected.get("sheets", [])):
@@ -98,6 +135,8 @@ def pool_filters(q, partner, partners, ptype="", types=()):
         '<button class="btn">Search</button>'
         '<a class="btn ghost" href="/app/partners">Clear</a>'
         '<a class="btn ghost" href="/app/partners/compare">Compare across partners</a>'
+        + (f'<a class="btn ghost" href="/app/partners/profile/{_e(partner)}">'
+           'Edit mapping</a>' if partner else "") +
         '<a class="btn" href="/app/partners/upload">Upload price-list</a>'
         '</div></form>')
 

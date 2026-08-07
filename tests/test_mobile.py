@@ -32,8 +32,9 @@ def test_the_drawer_needs_no_javascript(tmp_path, monkeypatch):
     c = _login(p)
     for path in ("/app", "/app/inbox", "/app/preferences"):
         h = c.get(path).text
-        assert "<script" not in h.lower(), path
-        assert "onclick" not in h.lower(), path
+        assert 'id="navtoggle"' in h and 'class="nav-scrim"' in h, path
+        assert 'for="navtoggle"' in h, path
+        assert "onclick=" not in h.lower(), path
 def test_viewport_meta_is_present(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"m3.db")

@@ -105,3 +105,27 @@ Used-Refurb + ASC skipped.
   no price/article; skipped sheets: ...". No more mystery zero.
 - Cross-partner compare needs the SAME article (BRAND+P/N) at 2+ partners; with mostly disjoint
   catalogs the multi-partner list is short. Fuzzy/no-MPN matching is a future task.
+
+## Real-data fixes round 2 (Jul 25 — 38k offers across 7 partners)
+Diagnosis from a real export: only 12% of offers had price_usd; the "3 cross-partner matches"
+were 2 garbage header rows (MONITORS/HEADSET) + 1 real. Root causes and fixes:
+- MISSED PRICE COLUMN: Ultra's dealer price is "ЦенаD, USD" (Cyrillic+comma) which the synonym
+  dict didn't catch, so cost was unmapped and 27066 rows imported priceless. Widened the `cost`
+  synonyms (ценаd/цена dealer/preț dealer usd/...). has_price_original=0 for Ultra/MGB/Dell/
+  Elcore/QGroup meant the price never reached the DB — must RE-IMPORT, not just re-run fx.
+- EDIT-MAPPING + RE-IMPORT (no re-upload): /app/partners/profile/{partner} re-detects the stored
+  file, prefills the saved mapping, lets you fix which column is the price, and re-imports the
+  SAME stored file (partner_files.upload_path). ingest_workbook gained force=True: on a matching
+  (partner,sha256) it reuses the file row, deletes its old offers, and re-inserts — so a fix
+  doesn't pile up history or need the file again. reimport(conn, partner, profile, fx) drives it.
+  "Edit mapping" button appears in the pool when a partner is selected.
+- NO PRICE => NOT A PRODUCT: a product row whose resolved price is None is dropped (counted
+  unparsed), which removes header rows like MONITORS/HEADSET and the fake matches they caused.
+- Duplicate re-send now raises ValueError (was IntegrityError); the confirm banner matches on
+  "already imported".
+- fx_rates on the server were still the DEFAULT placeholders (USD->MDL 18.0 etc.) — Victor needs
+  to set real rates in Settings, then re-import the lei partners.
+- HONEST STANCE: with these partners' catalogs mostly disjoint, cross-partner top-3 is rare (1
+  real overlap). The system's real value here is a unified priced catalog + search across all
+  partners; top-3 is a bonus where overlap exists. Semantic (brand+model) matching without AI was
+  prototyped and REJECTED — it false-matches on spec fragments (RJ45, 16GB, 1920X1080).
