@@ -1,305 +1,139 @@
-# Tender Engine
+# Tender Engine — LLM-powered public tender analysis
 
-Конфигурируемый движок для ежедневного мониторинга и анализа тендеров.
-Ядро (engine) ничего не знает про тендеры — оно прогоняет ступени (stages)
-по конфигу. Тендер-монитор — первая конфигурация поверх движка.
+A self-hosted engine that collects public tenders every day, reads their documents, and tells a
+system integrator **which tenders it can actually win and at what margin**. Built for the Moldovan
+market (MTender + procurement websites), with Claude models doing the reading and reasoning and
+plain code doing everything that must be exact.
 
-## Принцип
+![Python](https://img.shields.io/badge/python-3.10%2B-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-web%20UI-009688)
+![SQLite](https://img.shields.io/badge/storage-SQLite-lightgrey)
+![LLM](https://img.shields.io/badge/LLM-Claude%20(Haiku%20%2F%20Sonnet%20%2F%20Opus)-orange)
 
-- Кор (неизменный): контракт ступени, реестр, БД, config-store с
-  версионированием и горячей перезагрузкой, оркестратор, планировщик, проверки.
-- Опции (данные, меняются без правки кода): пайплайны, расписание, пороги,
-  источники, промпты, выбор модели — всё в БД как версионируемый конфиг.
+---
 
-## Команды (CLI)
+## What it does
 
-```
-python3 app.py check               # проверки при старте (БД, схема, конфиги, ступени)
-python3 app.py run pipeline.demo   # один прогон пайплайна сейчас
-python3 app.py serve               # демон-планировщик (по расписанию из конфига)
-python3 app.py demo                # демонстрационный прогон
+1. **Collects** tenders from MTender (OCDS JSON API) and from arbitrary procurement websites
+   (generic web collector, optional Crawl4AI rendering), incrementally and with cross-source dedup.
+2. **Triages** them without an LLM: weighted CPV codes and keywords put each tender into
+   `relevant` / `gray` / `out`. Nothing is deleted — `out` keeps its reason.
+3. **Reads the documents**: PDF (PyMuPDF) and DOCX (python-docx); scanned PDFs go through
+   vision-model OCR. Boilerplate sections of the standard procurement template are cut locally
+   to save tokens.
+4. **Extracts the specification**: subject, technical requirements, equipment list, deadlines,
+   qualification criteria, estimated value.
+5. **Checks applicability** against the company profile: `can` / `partial` / `cannot`, a readiness
+   score, what matched, and what is missing.
+6. **Matches suppliers** from the catalog; the **code** (not the LLM) computes cost, currency
+   conversion and margin, and flags a margin as partial when items or FX rates are missing.
+7. **Supervises**: a daily digest ranks the best opportunities, borderline cases are escalated to a
+   stronger model, and collection coverage is monitored (stalled source, sudden drop in volume).
+8. **Notifies** by email / Telegram and shows everything in a web UI (inbox, browse, planning,
+   tender detail, settings) for admin and company users.
 
-python3 tools/inspect.py runs      # последние прогоны пайплайнов
-python3 tools/inspect.py stages    # последние ступени (статус, токены, ошибки)
-python3 tools/inspect.py tenders   # тендеры в БД
-python3 tools/inspect.py verdicts  # вердикты
-python3 tools/inspect.py configs   # активные конфиги (с версиями)
-python3 tools/inspect.py audit     # журнал изменений
-# у всех команд кроме configs есть -n N (сколько строк)
-```
+## Pipeline
 
-## Запуск из домашней папки (без sudo, без venv)
-
-Фаза 0-1 — чистый stdlib, зависимостей ноль.
-
-```
-cd ~/tenderengine
-python3 app.py check
-python3 tests/test_phase0.py
-python3 tests/test_phase1.py
-```
-
-## Демон (выбери один способ)
-
-A) user-level systemd (без sudo, переживает разлогин при включённом linger):
-```
-mkdir -p ~/.config/systemd/user
-cp ~/tenderengine/deploy/tenderengine.user.service ~/.config/systemd/user/tenderengine.service
-systemctl --user daemon-reload
-systemctl --user enable --now tenderengine
-systemctl --user status tenderengine
-journalctl --user -u tenderengine -f
-# чтобы работал без активной сессии (если разрешено):
-loginctl enable-linger $USER
+```mermaid
+flowchart LR
+    S[(MTender<br/>websites)] --> C[collect]
+    C --> T[triage<br/>rules, no LLM]
+    T -->|relevant / gray| E[extract]
+    E --> EV{{verify}}
+    EV --> A[applicability]
+    A --> AV{{verify}}
+    AV -->|can / partial| SU[suppliers]
+    SU --> SV{{verify}}
+    SV --> D[digest +<br/>supervisor]
+    D --> N[email / Telegram<br/>web UI]
+    EV -. needs_review .-> D
+    AV -. needs_review .-> D
+    SV -. needs_review .-> D
 ```
 
-B) nohup (самый простой fallback):
-```
-cd ~/tenderengine
-nohup python3 app.py serve > serve.log 2>&1 &
-tail -f serve.log
-# остановить: pkill -f "app.py serve"
-```
+## Design decisions
 
-C) system-level systemd (если есть sudo и /opt) — см. deploy/tenderengine.service.
+- **Worker ↔ verifier.** Every analytical LLM stage is paired with a cheaper verifier model that
+  checks the result against the source documents (missing fields, invented facts, numbers). On
+  failure the worker retries with the verifier's hint; if it still fails, the tender is flagged
+  `needs_review` instead of silently passing.
+- **"The LLM judges, the code counts."** Models decide whether a product matches a spec; prices,
+  quantities, FX conversion and margin are computed in code.
+- **Model per stage.** Haiku for extraction/verification and the gray zone, Sonnet for applicability
+  of relevant tenders, Opus only for escalations — all configurable.
+- **Config as data.** Pipelines, schedule, sources, weights, prompts and model choice live in SQLite
+  as versioned config with history, rollback and hot reload. The core engine knows nothing about
+  tenders: it runs stages from config, so the tender monitor is just the first configuration.
+- **Honest failure.** If a model's JSON cannot be parsed, the raw answer is stored and the tender
+  goes to review; a missing API key is reported loudly instead of falling back to the stub silently.
+- **Cost control.** Response cache by hash, token/cost accounting per stage, document cache,
+  escalation budget.
 
-## Расписание
+## Tech stack
 
-Меняется через конфиг `schedule.jobs` (по умолчанию выключено). Пример:
-```
-[{"pipeline": "pipeline.demo", "at": ["03:00"], "enabled": true},
- {"pipeline": "pipeline.demo", "every_minutes": 30, "enabled": false}]
-```
-"at" — список времён HH:MM; "every_minutes" — интервал. Режим nightly/двухфазный =
-какие задания включены. Планировщик подхватывает изменения конфига на лету.
+Python 3.10 · FastAPI · SQLite (WAL) · Anthropic Claude API · PyMuPDF · python-docx ·
+Crawl4AI (optional) · systemd · 72 pytest test modules.
 
-## Бэкап
-
-Скопировать `data/tenderengine.db` (+ `-wal`/`-shm`) через WinSCP.
-
-## Слой данных
-
-SQLite (один файл). Доступ изолирован в engine/db.py — переход на Postgres при
-мультитенантности не затрагивает ступени.
-
-## Фаза 2: коллекторы (MTender)
-
-Источники — в конфиге `sources.<имя>`, не в коде. Первый: MTender (OCDS JSON).
+## Project structure
 
 ```
-# посмотреть реальную форму ответа источника (курсор, поля) на боевом сервере:
-python3 app.py probe mtender
-
-# включить источник и задать параметры:
-python3 tools/config_cli.py set sources.mtender '{"enabled": true, "list_url": "https://public.mtender.gov.md/tenders", "record_url_template": "https://public.mtender.gov.md/tenders/{ocid}", "timeout": 30, "page_limit": 1, "max_records_per_run": 20, "backfill_days": 7}'
-
-# собрать тендеры:
-python3 app.py collect mtender
-
-# посмотреть результат:
-python3 tools/view.py sources    # история прогонов источника (fetched/new/cursor)
-python3 tools/view.py tenders    # собранные тендеры
+app.py               CLI entry point (collect, triage, extract, applicability, suppliers, digest, web, ...)
+engine/              Domain-agnostic core: stage registry, orchestrator, scheduler, config store,
+                     DB layer, LLM gateway, document reading, health checks, accounts
+workflows/           Tender-specific stages: collectors, triage, extract, verify, applicability,
+                     suppliers, supervisor, notify
+web/                 FastAPI web UI (admin zone + company user zone)
+config/defaults/     Seed configuration (applied only for keys that do not exist yet)
+deploy/              systemd units (system and user level)
+tools/               config_cli.py (get/set/history/rollback), view.py (read-only inspection)
+tests/               Test suite
+docs/DEVLOG.ru.md    Phase-by-phase development log and operating notes (Russian)
 ```
 
-Коллектор инкрементальный: курсор хранится в `source_state`, при пустом курсоре
-стартует с `now - backfill_days`. Объём по каждому прогону пишется в `source_runs`
-(задел под мониторинг охвата / антипропуск на Фазе 7).
+## Quick start
 
-## Редактор конфигов (CLI, до веб-морды)
+```bash
+git clone https://github.com/Madly222/mcp4tender.git tenderengine && cd tenderengine
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+echo 'ANTHROPIC_API_KEY=sk-ant-...' > .env        # without a key the LLM provider is a free stub
 
-```
-python3 tools/config_cli.py list
-python3 tools/config_cli.py get <key>
-python3 tools/config_cli.py set <key> '<json>'
-python3 tools/config_cli.py history <key>
-python3 tools/config_cli.py rollback <key> <version>
-```
-
-## Смотрелка (read-only)
-
-`python3 tools/view.py [runs|stages|tenders|verdicts|configs|audit|sources] [-n N]`
-
-## Фаза 3: триаж (без LLM)
-
-Скоринг по весам из конфига, раскладка в 3 корзины, ничего не удаляется (только метка + причина).
-
-```
-python3 app.py triage            # прогнать триаж по тендерам со статусом new/updated
-python3 tools/view.py triage     # тендеры с корзиной/скором, по убыванию релевантности
+.venv/bin/python app.py check                     # DB, schema, configs, stages
+.venv/bin/python app.py user add --login admin --role admin
+.venv/bin/python app.py web                       # web UI
+.venv/bin/python app.py serve                     # scheduler daemon (or use deploy/*.service)
 ```
 
-Веса меняются на лету через config_cli (релевантность = ваши ниши):
-```
-python3 tools/config_cli.py get triage.cpv_weights
-python3 tools/config_cli.py set triage.keyword_weights '{"dron":3,"camera":2,...}'
-python3 tools/config_cli.py set triage.bucket_thresholds '{"relevant":3,"gray":0.5}'
-```
-Корзины: relevant (>= relevant) -> сразу в дальнейший анализ; gray (>= gray) -> страховочная
-сетка (на Фазе 5 досматривает дешёвая модель); out (< gray) -> не анализируем, но храним
-с причиной. Пороги — веса, а не жёсткие ворота: любой положительный сигнал даёт минимум gray.
+Run stages by hand:
 
-## renormalize (без сети)
-
-После изменения нормализатора переприменить его к уже скачанным записям без повторных HTTP:
-```
-python3 app.py renormalize mtender
-```
-
-## Фаза 4A: venv + LLM-шлюз
-
-Первая фаза с зависимостями. Поднять venv (без sudo) и поставить пакеты:
-```
-cd ~/tenderengine
-python3 -m venv .venv
-.venv/bin/pip install --upgrade pip
-.venv/bin/pip install -r requirements.txt
-```
-С этого момента запускать через `.venv/bin/python` (чтобы был доступен Anthropic SDK):
-```
-.venv/bin/python app.py check
-```
-
-Ключ Anthropic — в окружении (НЕ в коде/конфиге). Создать `~/tenderengine/.env`:
-```
-echo 'ANTHROPIC_API_KEY=sk-ant-...' > ~/tenderengine/.env
-```
-Для разовых команд: `export ANTHROPIC_API_KEY=sk-ant-...` перед запуском.
-user-systemd-юнит уже читает `.env` и запускает через `.venv/bin/python`.
-
-Проверка шлюза:
-```
-.venv/bin/python app.py llm-test --text "Spune OK"
-```
-Без ключа провайдер автоматически = stub (бесплатно, для отладки механики).
-С ключом = anthropic, реальный вызов + учёт токенов/стоимости.
-
-Настройки шлюза (config_cli):
-```
-llm.provider     auto | anthropic | stub
-llm.models       {"default":"...","extract":"...","applicability":"..."}  модель на ступень
-llm.pricing      {model:{"in":$/Mtok,"out":$/Mtok}}  ПЛЕЙСХОЛДЕРЫ — обнови под актуальные цены
-llm.cache_enabled true  (кэш ответов по хэшу: повтор не тарифицируется)
-```
-
-## Фаза 4B: чтение документов
-
-PDF — через PyMuPDF (без системных зависимостей), DOCX — python-docx. Сканы
-(мало текста на страницу) рендерятся в картинки и читаются зрением модели (OCR без tesseract).
-Файлы кэшируются в `data/docs/` (повторно не качаются).
-
-```
-.venv/bin/python app.py read-doc <tender_id>
-```
-Берёт документы тендера типов biddingDocuments/tenderNotice, качает, извлекает текст;
-для скана — vision OCR (стоит немного токенов). Печатает method (text|vision|skipped),
-число символов, стоимость и начало текста. Настройки — ключи documents.* в конфиге.
-
-## Фаза 4C: извлечение полей ТЗ
-
-Берёт caiet de sarcini релевантных/серых тендеров, локально вырезает техсекцию
-(отбрасывая типовой шаблон Минфина — экономия токенов), отдаёт Haiku и достаёт
-структуру: объект, технические требования, СПИСОК ТЕХНИКИ (вход для Фазы 6),
-сроки, квалификация, оценочная стоимость.
-
-```
-.venv/bin/python app.py extract --limit 1     # извлечь 1 тендер (проверка, ~центы)
-.venv/bin/python app.py extract               # все triaged relevant/gray
-.venv/bin/python tools/view.py extractions
-```
-Дедуп форматов (pdf+docx одного файла = один документ), пропуск DUAE и стандартных форм.
-Нарезка настраивается ключами extract.* (маркеры секций, пороги). Результат — таблица extractions.
-
-## Фаза 4D: проверяющий (работник↔проверяющий)
-
-Каждая аналитическая ступень идёт в паре с проверяющим (дешёвая модель), который сверяет
-результат работника с исходным ТЗ: полнота (пропущенные поля — напр. valoare_estimata),
-выдумки (нет ли лишнего), числа. По умолчанию строгий режим: при проблемах — повтор работника
-с подсказкой; если не исправилось — флаг needs_review (для супер-агента, Фаза 7). Настраивается:
-```
-verify.strictness   strict | balanced | light   (по умолчанию strict)
-verify.max_retries  1
-```
-Конвейер extract теперь = [extract, extract_verify]. Результаты: tools/view.py verifications.
-
-ВАЖНО для существующей установки — обновить пайплайн (seed не перезаписывает):
-```
-python3 tools/config_cli.py set pipeline.tender_extract '["extract","extract_verify"]'
-```
-
-## Фаза 5: применимость (работник↔проверяющий)
-
-Работник applicability берёт тендер + извлечённое ТЗ + ПОЛНЫЙ профиль компании (capabilities.profile)
-и решает: can / partial / cannot + readiness_score (0-100) + reasoning + matched (что подошло) +
-gaps (чего не хватает) + required_equipment (вход для Фазы 6). Релевантные → Sonnet, серая зона → Haiku.
-Проверяющий applicability_verify сверяет вердикт с профилем (не сказал ли "можем" при дыре в gaps).
-
-Профиль — свободная структура в конфиге, LLM рассуждает по всему содержимому. Правится под себя:
-```
-python3 tools/config_cli.py get capabilities.profile
-python3 tools/config_cli.py set capabilities.profile '{...любые разделы и критерии...}'
-```
-
-```
+```bash
+.venv/bin/python app.py collect mtender
+.venv/bin/python app.py triage
+.venv/bin/python app.py extract --limit 1
 .venv/bin/python app.py applicability --limit 1
-.venv/bin/python tools/view.py applicability
-```
-Конвейер: collect → triage → extract(+verify) → applicability(+verify) → [Фаза 6: поставщики/маржа].
-
-## Надёжность (после инцидента со stub)
-
-- check и команды extract/applicability ГРОМКО предупреждают, если провайдер = stub
-  (нет валидного ANTHROPIC_API_KEY) — чтобы битый ключ не маскировался под работу.
-- Устойчивый разбор JSON (engine/jsonutil): снимает обёртки/преамбулу, вытаскивает {...}.
-- Prefill: модель просят начинать ответ с "{" (чистый JSON).
-- Честный fail: если ответ не распарсился — сырой текст сохраняется и тендер → needs_review,
-  ничего не теряется (вместо пустого вердикта).
-
-## Фаза 6: поставщики и маржа (каталог-приоритет)
-
-По списку техники из извлечения/применимости подбираем поставщиков. Разделение по принципу
-producer/verifier и "деньги считает код":
-- LLM (suppliers) сопоставляет каждую позицию с КАТАЛОГОМ (suppliers.catalog) и оценивает
-  соответствие спецификации (full/partial/none + confidence) — НЕ цены.
-- КОД считает: line_cost = цена × количество, total, margin = (стоимость_тендера − total)/тендер.
-- suppliers_verify сверяет: реально ли продукт отвечает спецификации, не выдумана ли потировка.
-
-Каталог — в конфиге (правится под себя; дефолт содержит примеры Jenoptik/Cisco/Genetec):
-```
-python3 tools/config_cli.py get suppliers.catalog
-python3 tools/config_cli.py set suppliers.catalog '[{"id":"...","supplier":"...","model":"...","price":2800,"currency":"EUR","specs":"..."}]'
-```
-Веб-добор (suppliers.web_enabled) — тумблер, пока заглушка (включим, когда добавим веб-поиск в шлюз).
-
-```
 .venv/bin/python app.py suppliers --limit 1
-.venv/bin/python tools/view.py suppliers
-```
-Конвейер: ... → applicability(+verify) → suppliers(+verify) → [Фаза 7: супер-агент/дайджест].
-
-## Фаза 6.1: корректная маржа (валюта + неполнота)
-
-- Все цены каталога приводятся к валюте тендера по курсам suppliers.fx_rates
-  (EUR->MDL и т.д., настраиваются; обратный курс считается автоматически).
-- Если часть позиций не подобрана ИЛИ нет курса — маржа помечается неполной (margin_partial,
-  в выводе '~' и колонка partial), и тендер уходит в needs_review. Чтобы 47% не выглядели как 97%.
-
-Обнови курсы под себя:
-```
-python3 tools/config_cli.py set suppliers.fx_rates '{"EUR->MDL":19.6,"USD->MDL":18.0,"RON->MDL":3.9}'
+.venv/bin/python app.py supervise                 # escalations + coverage + digest
 ```
 
-## Фаза 7: супер-агент (дайджест + эскалация + полнота)
+Configuration (examples):
 
-Слой НАД ступенями (не ступень конвейера). Делает три вещи:
-- ДАЙДЖЕСТ: ранжирует тендеры can/partial по readiness_score + честная маржа
-  (веса supervisor.rank_weights). Топ — то, что стоит брать.
-- ЭСКАЛАЦИЯ: разбирает флаги needs_review. autonomy=auto (по умолчанию) — пограничную
-  применимость сам переспрашивает у Opus и перепроверяет; suppliers-пробелы → всегда человеку.
-  autonomy=advise — только помечает, ничего не тратит. Бюджет: supervisor.max_escalations.
-- ПОЛНОТА: по source_runs ловит застой сбора, ошибки, резкое падение числа тендеров (анти-пропуск).
+```bash
+python3 tools/config_cli.py list
+python3 tools/config_cli.py set capabilities.profile '{"company": "...", "vendor_partnerships": {...}}'
+python3 tools/config_cli.py set suppliers.fx_rates '{"EUR->MDL": 19.6}'
+python3 tools/config_cli.py history llm.models
+```
 
+The company profile and supplier catalog shipped in `config/defaults/` are **examples**; replace
+them with your own via the web settings page or `config_cli.py`.
+
+## Tests
+
+```bash
+.venv/bin/pip install pytest httpx
+.venv/bin/python -m pytest tests -q
 ```
-.venv/bin/python app.py digest              # только дайджест
-.venv/bin/python app.py supervise           # эскалация + полнота + дайджест
-python3 tools/config_cli.py set supervisor.autonomy '"advise"'   # консервативный режим
-```
+
+## More
+
+The full development log — phases 0–7, operating commands and design notes — is in
+[docs/DEVLOG.ru.md](docs/DEVLOG.ru.md) (Russian).
