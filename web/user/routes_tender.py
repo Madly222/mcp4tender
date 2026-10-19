@@ -298,7 +298,7 @@ def tender(request: Request, tender_id: int):
         left += '<div class="gap"></div>' + costing
     right = (_decision(row, info, back) + '<div class="gap"></div>' + _facts(row, nj, portal)
              + '<div class="gap"></div>' + _documents(row, nj))
-    body = f'<div class="two">{left}<div>{right}</div></div>'
+    body = f'<div class="two"><div>{left}</div><div>{right}</div></div>'
 
     heading = (nj.get("title") or "(untitled)")[:110]
     lede = f'{nj.get("buyer") or ""} · {work.LABELS[stage]}'
