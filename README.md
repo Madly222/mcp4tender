@@ -23,6 +23,11 @@ plain code doing everything that must be exact.
 | ![Costing](docs/screenshots/04-tender-costing.png) | ![Qualified pipeline](docs/screenshots/05-qualified.png) |
 | **Costing:** catalog suppliers matched per requirement; the margin is computed in code and marked partial when an item has no supplier | **Pipeline:** kept tenders moved through in progress / submitted / won / lost |
 
+<p align="center">
+  <img src="docs/screenshots/11-telegram.png" alt="Telegram notification: tender summary and the full analysis as a Markdown file" width="60%">
+</p>
+<p align="center"><b>Telegram notification:</b> a short summary plus the full analysis as a Markdown file (message text built by <code>workflows/notify.py</code>)</p>
+
 <details>
 <summary>AI spending, engine admin, versioned config, schedule</summary>
 
