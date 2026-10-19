@@ -10,6 +10,36 @@ plain code doing everything that must be exact.
 ![SQLite](https://img.shields.io/badge/storage-SQLite-lightgrey)
 ![LLM](https://img.shields.io/badge/LLM-Claude%20(Haiku%20%2F%20Sonnet%20%2F%20Opus)-orange)
 
+<p align="center">
+  <img src="docs/screenshots/01-dashboard.png" alt="Dashboard: open work, match scores, margins and deadlines" width="100%">
+</p>
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Tender inbox](docs/screenshots/02-inbox.png) | ![Tender analysis](docs/screenshots/03-tender-analysis.png) |
+| **Inbox:** new tenders with match score, margin, documents and days left; keep or drop in one click | **Tender page:** "Can we do this?" verdict with reasoning, and what the model read out of the documents |
+| ![Costing](docs/screenshots/04-tender-costing.png) | ![Qualified pipeline](docs/screenshots/05-qualified.png) |
+| **Costing:** catalog suppliers matched per requirement; the margin is computed in code and marked partial when an item has no supplier | **Pipeline:** kept tenders moved through in progress / submitted / won / lost |
+
+<details>
+<summary>AI spending, engine admin, versioned config, schedule</summary>
+
+![AI spending](docs/screenshots/06-ai-spending.png)
+
+![Results](docs/screenshots/07-admin-results.png)
+
+![Applicability stage](docs/screenshots/08-admin-applicability.png)
+
+![Config](docs/screenshots/09-config.png)
+
+![Schedule](docs/screenshots/10-schedule.png)
+
+</details>
+
+All screenshots use made-up demo data: buyers, tenders, suppliers and prices are fictional.
+
 ---
 
 ## What it does
