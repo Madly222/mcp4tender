@@ -48,7 +48,9 @@ def build_digest(conn, store, limit=None):
             "margin": margin, "margin_partial": bool(sup["margin_partial"]) if sup else None,
             "unmatched": sup["unmatched_count"] if sup else None,
             "currency": sup["currency"] if sup else None,
-            "deadline": fields.get("termen_livrare"),
+            # Submission deadline, same precedence as web/user/cards.deadline_of.
+            # termen_livrare is the delivery term and must not be shown here.
+            "deadline": nj.get("deadline") or fields.get("data_depunerii"),
             "gaps": (reason.get("gaps") or [])[:3],
             "rank_score": round(rank, 2)})
     items.sort(key=lambda x: x["rank_score"], reverse=True)

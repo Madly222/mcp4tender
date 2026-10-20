@@ -69,6 +69,24 @@ def test_digest_excludes_cannot(tmp_path):
     assert digest[0]["title"] == "Yes"
 
 
+def test_digest_deadline_is_the_submission_deadline_not_delivery(tmp_path):
+    conn, store = fresh(tmp_path)
+    tid = seed_full(conn, "T", score=80, verdict="can", margin=0.3)
+    assert sv.build_digest(conn, store)[0]["deadline"] is None
+
+    conn.execute(
+        "INSERT INTO extractions(tender_id, fields_json, method, created_at) VALUES(?,?,?,?)",
+        (tid, json.dumps({"termen_livrare": "120 zile", "data_depunerii": "20.07.2026"}),
+         "text", time.time()))
+    conn.commit()
+    assert sv.build_digest(conn, store)[0]["deadline"] == "20.07.2026"
+
+    nj = json.dumps({"title": "T", "buyer": "MAI", "deadline": "2026-07-15T10:00:00Z"})
+    conn.execute("UPDATE tenders SET normalized_json = ? WHERE id = ?", (nj, tid))
+    conn.commit()
+    assert sv.build_digest(conn, store)[0]["deadline"] == "2026-07-15T10:00:00Z"
+
+
 def test_coverage_detects_stale(tmp_path):
     conn, store = fresh(tmp_path)
     store.set("supervisor.coverage_stale_hours", 24)
