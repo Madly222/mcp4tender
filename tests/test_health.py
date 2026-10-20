@@ -1,6 +1,7 @@
 from __future__ import annotations
 import sys, time
 from pathlib import Path
+import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from engine import db, secrets
 from engine.config_store import ConfigStore
@@ -38,6 +39,8 @@ def test_env_preserves_other_lines_and_comments(tmp_path):
     assert "# comment" in txt and "FOO=bar" in txt and "ANTHROPIC_API_KEY=sk-x" in txt
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="POSIX mode bits: os.chmod on Windows only toggles read-only")
 def test_env_file_is_private(tmp_path):
     p = tmp_path / ".env"
     secrets.write_env_var("ANTHROPIC_API_KEY", "sk-x", p)

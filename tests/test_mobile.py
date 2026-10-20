@@ -6,6 +6,7 @@ from engine import accounts, db
 from engine.config_store import ConfigStore
 from fastapi.testclient import TestClient
 from web.server import create_app
+from web.user.layout import POLL_JS
 def _fresh(tmp_path, name):
     p = str(tmp_path/name); conn = db.connect(p); db.init_schema(conn); ConfigStore(conn).reload()
     return p, conn
@@ -31,7 +32,8 @@ def test_the_drawer_needs_no_javascript(tmp_path, monkeypatch):
     accounts.create(conn, "rl", "password1", role="admin"); conn.close()
     c = _login(p)
     for path in ("/app", "/app/inbox", "/app/preferences"):
-        h = c.get(path).text
+        # The only script on the page is the nav-badge poller; the drawer itself is CSS.
+        h = c.get(path).text.replace(POLL_JS, "")
         assert "<script" not in h.lower(), path
         assert "onclick" not in h.lower(), path
 def test_viewport_meta_is_present(tmp_path, monkeypatch):

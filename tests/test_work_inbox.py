@@ -112,8 +112,8 @@ def test_nav_badge_drops_after_a_decision(tmp_path, monkeypatch):
     accounts.create(conn, "rl", "password1", role="admin")
     conn.close()
     c = _login(p, "rl", "password1")
-    assert '<span class="badge num">2</span>' in c.get("/app").text
+    assert '<span class="badge num" data-badge="inbox">2</span>' in c.get("/app").text
     c.post(f"/app/inbox/{t1}/stage", data={"stage": "skipped", "back": "/app/inbox"})
     h = c.get("/app").text
-    assert '<span class="badge num">1</span>' in h
+    assert '<span class="badge num" data-badge="inbox">1</span>' in h
     assert '<span class="n num">1</span>' in h
