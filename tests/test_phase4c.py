@@ -140,6 +140,13 @@ def test_extract_no_documents(tmp_path, monkeypatch):
     assert row["method"] == "metadata"
 
 
+def test_metadata_deadline_is_the_submission_deadline_not_delivery():
+    import workflows.extract as ext
+    f = ext._fields_from_metadata({"title": "Camere", "deadline": "2026-07-15T10:00:00Z"})
+    assert f["data_depunerii"] == "2026-07-15T10:00:00Z"
+    assert "termen_livrare" not in f
+
+
 if __name__ == "__main__":
     import tempfile
 

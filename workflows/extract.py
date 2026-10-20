@@ -123,7 +123,7 @@ def _fields_from_metadata(tender):
         obiect = (obiect + " — " + cpv_txt).strip(" —")
     return {"obiect": obiect,
             "valoare_estimata": tender.get("value_amount"),
-            "termen_livrare": tender.get("deadline"),
+            "data_depunerii": tender.get("deadline"),
             "echipamente": []}
 
 

@@ -135,7 +135,7 @@ def _stage_result(conn, stage, tid):
         f = f if isinstance(f, dict) else {"raw": str(f)}
         pairs = [("Method", _e(e["method"])), ("Model", _e(e["model"] or "-")),
                  ("Cost", f'${_e(round(e["cost"] or 0, 4))}')]
-        for key in ("obiect", "valoare_estimata", "termen_livrare"):
+        for key in ("obiect", "valoare_estimata", "termen_livrare", "data_depunerii"):
             if f.get(key):
                 pairs.append((key, _e(str(f[key])[:400])))
         equip = f.get("echipamente") or []
