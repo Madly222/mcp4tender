@@ -11,11 +11,11 @@ NOW = time.time()
 def _fresh(tmp_path, name):
     p = str(tmp_path/name); conn = db.connect(p); db.init_schema(conn)
     s = ConfigStore(conn); s.reload(); s.seed_defaults("config/defaults")
-    accounts.create(conn, "rl", "password1", company="SC Example Integrator SRL", role="user")
+    accounts.create(conn, "admin", "password1", company="SC Example Integrator SRL", role="user")
     conn.commit(); return p, conn
 def _login(p):
     c = TestClient(create_app(p), follow_redirects=False)
-    assert c.post("/login", data={"login": "rl", "password": "password1"}).status_code == 303
+    assert c.post("/login", data={"login": "admin", "password": "password1"}).status_code == 303
     return c
 def _iso(days):
     return time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(NOW + days*86400))

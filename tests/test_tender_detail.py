@@ -45,13 +45,13 @@ def _add(conn, ext="ocds-b3wdp1-MD-1749563214", title="Echipament de retea", ver
     conn.commit(); return tid
 def _login(p):
     c = TestClient(create_app(p), follow_redirects=False)
-    assert c.post("/login", data={"login": "rl", "password": "password1"}).status_code == 303
+    assert c.post("/login", data={"login": "admin", "password": "password1"}).status_code == 303
     return c
 def test_detail_shows_everything(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"t1.db")
     tid = _add(conn)
-    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    accounts.create(conn, "admin", "password1", role="admin"); conn.close()
     h = _login(p).get(f"/app/tender/{tid}").text
     assert "Cisco partner and has done this exact work" in h
     assert "Full fit" in h and "9/10" in h and "claude-sonnet" in h
@@ -66,7 +66,7 @@ def test_detail_handles_a_bare_tender(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"t2.db")
     tid = _add(conn, verdict=None, docs=False, extraction=False, costing=False)
-    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    accounts.create(conn, "admin", "password1", role="admin"); conn.close()
     h = _login(p).get(f"/app/tender/{tid}").text
     assert "Not analysed yet" in h
     assert "No attached documents" in h
@@ -75,13 +75,13 @@ def test_detail_handles_a_bare_tender(tmp_path, monkeypatch):
 def test_detail_404_on_unknown(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"t3.db")
-    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    accounts.create(conn, "admin", "password1", role="admin"); conn.close()
     assert _login(p).get("/app/tender/9999").status_code == 404
 def test_decision_saves_from_the_detail_page(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"t4.db")
     tid = _add(conn)
-    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    accounts.create(conn, "admin", "password1", role="admin"); conn.close()
     c = _login(p)
     r = c.post(f"/app/tender/{tid}/save",
                data={"stage": "in_progress", "note": "quote requested", "back": ""})
@@ -92,7 +92,7 @@ def test_lists_link_to_the_detail_page(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"t5.db")
     tid = _add(conn)
-    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    accounts.create(conn, "admin", "password1", role="admin"); conn.close()
     c = _login(p)
     for page in ("/app/inbox", "/app/search"):
         h = c.get(page).text
@@ -102,7 +102,7 @@ def test_read_only_blocks_the_detail_save(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"t6.db")
     tid = _add(conn)
-    accounts.create(conn, "rl", "password1", role="admin")
+    accounts.create(conn, "admin", "password1", role="admin")
     ConfigStore(conn).set("web.read_only", True); conn.commit(); conn.close()
     c = _login(p)
     c.post(f"/app/tender/{tid}/save", data={"stage": "won", "note": "x", "back": ""})

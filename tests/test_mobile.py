@@ -12,12 +12,12 @@ def _fresh(tmp_path, name):
     return p, conn
 def _login(p):
     c = TestClient(create_app(p), follow_redirects=False)
-    assert c.post("/login", data={"login": "rl", "password": "password1"}).status_code == 303
+    assert c.post("/login", data={"login": "admin", "password": "password1"}).status_code == 303
     return c
 def test_every_user_page_ships_the_drawer(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"m1.db")
-    accounts.create(conn, "rl", "password1", company="SC Example Integrator SRL", role="admin")
+    accounts.create(conn, "admin", "password1", company="SC Example Integrator SRL", role="admin")
     conn.close()
     c = _login(p)
     for path in ("/app", "/app/inbox", "/app/qualified", "/app/search", "/app/archive",
@@ -29,7 +29,7 @@ def test_every_user_page_ships_the_drawer(tmp_path, monkeypatch):
 def test_the_drawer_needs_no_javascript(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"m2.db")
-    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    accounts.create(conn, "admin", "password1", role="admin"); conn.close()
     c = _login(p)
     for path in ("/app", "/app/inbox", "/app/preferences"):
         # The only script on the page is the nav-badge poller; the drawer itself is CSS.
@@ -39,7 +39,7 @@ def test_the_drawer_needs_no_javascript(tmp_path, monkeypatch):
 def test_viewport_meta_is_present(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"m3.db")
-    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    accounts.create(conn, "admin", "password1", role="admin"); conn.close()
     h = _login(p).get("/app").text
     assert "width=device-width,initial-scale=1" in h
 def test_css_carries_the_responsive_rules(tmp_path, monkeypatch):

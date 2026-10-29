@@ -14,7 +14,7 @@ def _fresh(tmp_path, name):
     return p, conn
 def _login(p):
     c = TestClient(create_app(p), follow_redirects=False)
-    assert c.post("/login", data={"login": "rl", "password": "password1"}).status_code == 303
+    assert c.post("/login", data={"login": "admin", "password": "password1"}).status_code == 303
     return c
 def test_vtype_puts_bool_before_int():
     assert vtype_of(True) == "bool"
@@ -47,7 +47,7 @@ def test_every_section_prefix_is_unique():
 def test_hub_lists_sections_and_explains_the_gap(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"s1.db")
-    accounts.create(conn, "rl", "password1", company="SC Example Integrator SRL", role="user")
+    accounts.create(conn, "admin", "password1", company="SC Example Integrator SRL", role="user")
     conn.close()
     h = _login(p).get("/app/settings").text
     for label in ("Company profile", "What counts as relevant", "Suppliers and margins",
@@ -58,7 +58,7 @@ def test_a_user_role_can_reach_settings(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"s2.db")
     accounts.create(conn, "admin22", "password1", role="admin")
-    accounts.create(conn, "rl", "password1", company="SC Example Integrator SRL", role="user")
+    accounts.create(conn, "admin", "password1", company="SC Example Integrator SRL", role="user")
     conn.close()
     c = _login(p)
     assert c.get("/app/settings").status_code == 200
@@ -67,7 +67,7 @@ def test_a_user_role_can_reach_settings(tmp_path, monkeypatch):
 def test_relevance_section_is_fully_form_driven(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"s3.db")
-    accounts.create(conn, "rl", "password1", role="user"); conn.close()
+    accounts.create(conn, "admin", "password1", role="user"); conn.close()
     h = _login(p).get("/app/settings/relevance").text
     assert "Search keywords" in h and "CPV weights" in h
     assert "Score cut-offs" in h and "Value band" in h
@@ -76,14 +76,14 @@ def test_relevance_section_is_fully_form_driven(tmp_path, monkeypatch):
 def test_generated_rows_still_carry_their_description(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"s3b.db")
-    accounts.create(conn, "rl", "password1", role="user"); conn.close()
+    accounts.create(conn, "admin", "password1", role="user"); conn.close()
     h = _login(p).get("/app/settings/reading").text
     assert "documents.timeout" in h
     assert "HTTP timeout (seconds) when downloading a tender document." in h
 def test_saving_a_scalar_and_a_json_key(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"s4.db")
-    accounts.create(conn, "rl", "password1", role="user"); conn.close()
+    accounts.create(conn, "admin", "password1", role="user"); conn.close()
     c = _login(p)
     r = c.post("/app/settings/save", data={"key": "results.new_days", "vtype": "int",
                                            "v": "12", "back": "/app/settings/lists"})
@@ -100,7 +100,7 @@ def test_bad_json_is_refused_and_nothing_changes(tmp_path, monkeypatch):
     p, conn = _fresh(tmp_path,"s5.db")
     before = ConfigStore(conn); before.reload()
     original = before.get("triage.keyword_weights")
-    accounts.create(conn, "rl", "password1", role="user"); conn.close()
+    accounts.create(conn, "admin", "password1", role="user"); conn.close()
     c = _login(p)
     r = c.post("/app/settings/save", data={"key": "triage.keyword_weights", "vtype": "json",
                                            "v": "{oops", "back": "/app/settings/relevance"})
@@ -110,7 +110,7 @@ def test_bad_json_is_refused_and_nothing_changes(tmp_path, monkeypatch):
 def test_saving_a_web_key_through_the_user_zone_is_rejected(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"s6.db")
-    accounts.create(conn, "rl", "password1", role="user"); conn.close()
+    accounts.create(conn, "admin", "password1", role="user"); conn.close()
     c = _login(p)
     r = c.post("/app/settings/save", data={"key": "web.port", "vtype": "int", "v": "9999",
                                            "back": "/app/settings/engine"})
@@ -120,7 +120,7 @@ def test_saving_a_web_key_through_the_user_zone_is_rejected(tmp_path, monkeypatc
 def test_read_only_blocks_settings_save(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"s7.db")
-    accounts.create(conn, "rl", "password1", role="user")
+    accounts.create(conn, "admin", "password1", role="user")
     ConfigStore(conn).set("web.read_only", True); conn.commit(); conn.close()
     c = _login(p)
     r = c.post("/app/settings/save", data={"key": "results.new_days", "vtype": "int",
@@ -131,7 +131,7 @@ def test_read_only_blocks_settings_save(tmp_path, monkeypatch):
 def test_save_keeps_the_version_history(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"s8.db")
-    accounts.create(conn, "rl", "password1", role="user"); conn.close()
+    accounts.create(conn, "admin", "password1", role="user"); conn.close()
     c = _login(p)
     c.post("/app/settings/save", data={"key": "results.new_days", "vtype": "int",
                                        "v": "11", "back": "/app/settings/lists"})
@@ -148,7 +148,7 @@ def test_internal_state_keys_never_appear_in_the_settings_form(tmp_path, monkeyp
     p, conn = _fresh(tmp_path, "int1.db")
     s = ConfigStore(conn); s.reload()
     s.set("llm.last_key_check", {"status": "ok", "model": "claude-haiku-4-5"})
-    accounts.create(conn, "rl", "password1", role="user"); conn.close()
+    accounts.create(conn, "admin", "password1", role="user"); conn.close()
     assert "llm.last_key_check" not in keys_in(ConfigStore(db.connect(p)), "ai")
     h = _login(p).get("/app/settings/ai").text
     # the raw key name / JSON editor is gone...
@@ -162,7 +162,7 @@ def test_saving_an_internal_key_through_the_form_is_rejected(tmp_path, monkeypat
     p, conn = _fresh(tmp_path, "int2.db")
     s = ConfigStore(conn); s.reload()
     s.set("llm.last_key_check", {"status": "ok"})
-    accounts.create(conn, "rl", "password1", role="user"); conn.close()
+    accounts.create(conn, "admin", "password1", role="user"); conn.close()
     c = _login(p)
     c.post("/app/settings/save",
            data={"key": "llm.last_key_check", "vtype": "json", "v": '{"status":"HACKED"}',

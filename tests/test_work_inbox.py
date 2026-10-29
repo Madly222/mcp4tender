@@ -63,9 +63,9 @@ def test_inbox_lists_new_and_renders_data(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"w4.db")
     _add(conn, "a1", "Echipament de retea")
-    accounts.create(conn, "rl", "password1", company="SC Example Integrator SRL", role="admin")
+    accounts.create(conn, "admin", "password1", company="SC Example Integrator SRL", role="admin")
     conn.close()
-    h = _login(p, "rl", "password1").get("/app/inbox").text
+    h = _login(p, "admin", "password1").get("/app/inbox").text
     assert "Echipament de retea" in h and "STISC" in h
     assert "1 250 000" in h and "MDL" in h
     assert "9/10" in h and "Full fit" in h
@@ -75,9 +75,9 @@ def test_keep_moves_out_of_inbox(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"w5.db")
     tid = _add(conn, "a1", "Echipament de retea")
-    accounts.create(conn, "rl", "password1", role="admin")
+    accounts.create(conn, "admin", "password1", role="admin")
     conn.close()
-    c = _login(p, "rl", "password1")
+    c = _login(p, "admin", "password1")
     r = c.post(f"/app/inbox/{tid}/stage", data={"stage": "qualified", "back": "/app/inbox"})
     assert r.status_code == 303
     h = c.get("/app/inbox").text
@@ -86,9 +86,9 @@ def test_read_only_blocks_the_decision(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"w6.db")
     tid = _add(conn, "a1", "Echipament de retea")
-    accounts.create(conn, "rl", "password1", role="admin")
+    accounts.create(conn, "admin", "password1", role="admin")
     ConfigStore(conn).set("web.read_only", True); conn.commit(); conn.close()
-    c = _login(p, "rl", "password1")
+    c = _login(p, "admin", "password1")
     c.post(f"/app/inbox/{tid}/stage", data={"stage": "skipped", "back": "/app/inbox"})
     assert "Echipament de retea" in c.get("/app/inbox").text
 def test_inbox_filters(tmp_path, monkeypatch):
@@ -96,9 +96,9 @@ def test_inbox_filters(tmp_path, monkeypatch):
     p, conn = _fresh(tmp_path,"w7.db")
     _add(conn, "a1", "Echipament de retea", verdict="can", score=90)
     _add(conn, "a2", "Servicii de curatenie", verdict="partial", score=50, buyer="CNAS")
-    accounts.create(conn, "rl", "password1", role="admin")
+    accounts.create(conn, "admin", "password1", role="admin")
     conn.close()
-    c = _login(p, "rl", "password1")
+    c = _login(p, "admin", "password1")
     both = c.get("/app/inbox").text
     assert "Echipament de retea" in both and "Servicii de curatenie" in both
     only_can = c.get("/app/inbox?match=can").text
@@ -109,9 +109,9 @@ def test_nav_badge_drops_after_a_decision(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"w8.db")
     t1 = _add(conn, "a1", "One"); _add(conn, "a2", "Two")
-    accounts.create(conn, "rl", "password1", role="admin")
+    accounts.create(conn, "admin", "password1", role="admin")
     conn.close()
-    c = _login(p, "rl", "password1")
+    c = _login(p, "admin", "password1")
     assert '<span class="badge num" data-badge="inbox">2</span>' in c.get("/app").text
     c.post(f"/app/inbox/{t1}/stage", data={"stage": "skipped", "back": "/app/inbox"})
     h = c.get("/app").text

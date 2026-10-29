@@ -12,12 +12,12 @@ def _app(tmp_path, name, gw_on=True):
     s.set("sources.genericweb", dict(s.get("sources.genericweb", {}), enabled=gw_on))
     s.set("sites.tenders", [{"id": "ach", "label": "achizitii",
                              "url": "https://achizitii.md/ro/", "enabled": True}])
-    accounts.create(conn, "rl", "password1", company="SC Example Integrator SRL", role="user")
+    accounts.create(conn, "admin", "password1", company="SC Example Integrator SRL", role="user")
     conn.commit(); conn.close()
     return p
 def _login(p):
     c = TestClient(create_app(p), follow_redirects=False)
-    assert c.post("/login", data={"login": "rl", "password": "password1"}).status_code == 303
+    assert c.post("/login", data={"login": "admin", "password": "password1"}).status_code == 303
     return c
 def _stub_page(monkeypatch, text="tenders here", rendered=False):
     import workflows.collectors.genericweb_analyze as an

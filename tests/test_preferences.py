@@ -11,7 +11,7 @@ def _fresh(tmp_path, name):
     p = str(tmp_path/name); conn = db.connect(p); db.init_schema(conn)
     s = ConfigStore(conn); s.reload(); s.seed_defaults("config/defaults")
     return p, conn
-def _login(p, login="rl"):
+def _login(p, login="admin"):
     c = TestClient(create_app(p), follow_redirects=False)
     assert c.post("/login", data={"login": login, "password": "password1"}).status_code == 303
     return c
@@ -44,7 +44,7 @@ def test_junk_in_the_db_falls_back_to_default(tmp_path):
 def test_switching_theme_changes_the_html_attribute(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"t3.db")
-    accounts.create(conn, "rl", "password1", company="SC Example Integrator SRL", role="user")
+    accounts.create(conn, "admin", "password1", company="SC Example Integrator SRL", role="user")
     conn.close()
     c = _login(p)
     assert 'data-theme="dark"' in c.get("/app").text
@@ -78,7 +78,7 @@ def test_no_hardcoded_dark_left_in_the_shell(tmp_path, monkeypatch):
 def test_page_points_at_company_settings(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"t7.db")
-    accounts.create(conn, "rl", "password1", role="user"); conn.close()
+    accounts.create(conn, "admin", "password1", role="user"); conn.close()
     h = _login(p).get("/app/preferences").text
     assert "Looking for the engine?" in h and 'href="/app/settings"' in h
     assert "new_days" not in h and "archive_after_days" not in h

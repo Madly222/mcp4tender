@@ -62,12 +62,12 @@ def test_the_button_stores_what_it_found(tmp_path, monkeypatch):
     s = ConfigStore(conn); s.reload(); s.seed_defaults("config/defaults")
     s.set("sites.tenders", [{"id": "ch", "label": "Primaria", "url": "https://s.md/ach",
                              "enabled": True}])
-    accounts.create(conn, "rl", "password1", role="user"); conn.commit(); conn.close()
+    accounts.create(conn, "admin", "password1", role="user"); conn.commit(); conn.close()
     import workflows.collectors.feed_probe as fp
     monkeypatch.setattr(fp, "probe", lambda url, **k: [
         {"kind": "wordpress", "url": "https://s.md/wp-json/wp/v2/posts", "note": "n"}])
     c = TestClient(create_app(p), follow_redirects=False)
-    c.post("/login", data={"login": "rl", "password": "password1"})
+    c.post("/login", data={"login": "admin", "password": "password1"})
     r = c.post("/app/settings/sites/probe", data={"id": "ch"})
     assert r.status_code == 303 and "found+wordpress" in r.headers["location"].replace("%20", "+")
     conn = db.connect(p); s2 = ConfigStore(conn); s2.reload()
@@ -81,10 +81,10 @@ def test_nothing_found_is_recorded_too(tmp_path, monkeypatch):
     p = str(tmp_path/"f2.db"); conn = db.connect(p); db.init_schema(conn)
     s = ConfigStore(conn); s.reload(); s.seed_defaults("config/defaults")
     s.set("sites.tenders", [{"id": "ch", "label": "P", "url": "https://s.md/a", "enabled": True}])
-    accounts.create(conn, "rl", "password1", role="user"); conn.commit(); conn.close()
+    accounts.create(conn, "admin", "password1", role="user"); conn.commit(); conn.close()
     import workflows.collectors.feed_probe as fp
     monkeypatch.setattr(fp, "probe", lambda url, **k: [])
     c = TestClient(create_app(p), follow_redirects=False)
-    c.post("/login", data={"login": "rl", "password": "password1"})
+    c.post("/login", data={"login": "admin", "password": "password1"})
     c.post("/app/settings/sites/probe", data={"id": "ch"})
     assert "no feed" in c.get("/app/settings/sources").text

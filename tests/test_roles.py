@@ -111,10 +111,10 @@ def test_a_user_owns_the_sites_page(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path, "sites_role.db")
     accounts.create(conn, "admin22", "password1", role="admin")
-    accounts.create(conn, "rl", "password1", company="SC Example Integrator SRL", role="user")
+    accounts.create(conn, "admin", "password1", company="SC Example Integrator SRL", role="user")
     conn.close()
     c = TestClient(create_app(p), follow_redirects=False)
-    assert c.post("/login", data={"login": "rl", "password": "password1"}).status_code == 303
+    assert c.post("/login", data={"login": "admin", "password": "password1"}).status_code == 303
     assert c.get("/app/settings/sources").status_code == 200
     assert c.post("/app/settings/sites/mtender-toggle").status_code == 303
     assert c.get("/sites").status_code in (403, 404)

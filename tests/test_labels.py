@@ -13,11 +13,11 @@ from web.user.settings_meta import section_of
 def _fresh(tmp_path, name):
     p = str(tmp_path/name); conn = db.connect(p); db.init_schema(conn)
     s = ConfigStore(conn); s.reload(); s.seed_defaults("config/defaults")
-    accounts.create(conn, "rl", "password1", company="SC Example Integrator SRL", role="user")
+    accounts.create(conn, "admin", "password1", company="SC Example Integrator SRL", role="user")
     conn.commit(); return p, conn
 def _login(p):
     c = TestClient(create_app(p), follow_redirects=False)
-    assert c.post("/login", data={"login": "rl", "password": "password1"}).status_code == 303
+    assert c.post("/login", data={"login": "admin", "password": "password1"}).status_code == 303
     return c
 def test_every_generated_key_has_a_real_name(tmp_path):
     """Nothing the user can see should fall back to the humanizer."""

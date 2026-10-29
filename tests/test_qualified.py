@@ -22,21 +22,21 @@ def _add(conn, ext, title, verdict="can", score=90, dl_days=20):
     conn.execute("INSERT INTO verdicts(tender_id,stage_name,verdict,score,created_at) VALUES(?,'applicability',?,?,?)",
                  (tid, verdict, score, time.time()))
     conn.commit(); return tid
-def _login(p, login="rl", password="password1"):
+def _login(p, login="admin", password="password1"):
     c = TestClient(create_app(p), follow_redirects=False)
     assert c.post("/login", data={"login": login, "password": password}).status_code == 303
     return c
 def test_empty_state_points_at_the_inbox(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"q1.db")
-    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    accounts.create(conn, "admin", "password1", role="admin"); conn.close()
     h = _login(p).get("/app/qualified").text
     assert "Nothing here yet" in h and 'href="/app/inbox"' in h
 def test_kept_tender_shows_up_with_kpis(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"q2.db")
     tid = _add(conn, "a1", "Echipament de retea")
-    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    accounts.create(conn, "admin", "password1", role="admin"); conn.close()
     c = _login(p)
     c.post(f"/app/inbox/{tid}/stage", data={"stage": "qualified", "back": "/app/inbox"})
     h = c.get("/app/qualified").text
@@ -45,7 +45,7 @@ def test_stage_move_and_note_save(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"q3.db")
     tid = _add(conn, "a1", "Echipament de retea")
-    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    accounts.create(conn, "admin", "password1", role="admin"); conn.close()
     c = _login(p)
     c.post(f"/app/inbox/{tid}/stage", data={"stage": "qualified", "back": "/app/inbox"})
     r = c.post(f"/app/qualified/{tid}/save",
@@ -60,7 +60,7 @@ def test_tabs_filter_by_stage(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"q4.db")
     t1 = _add(conn, "a1", "AlphaOne"); t2 = _add(conn, "a2", "BetaTwo")
-    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    accounts.create(conn, "admin", "password1", role="admin"); conn.close()
     c = _login(p)
     c.post(f"/app/qualified/{t1}/save", data={"stage": "submitted", "back": "/app/qualified"})
     c.post(f"/app/qualified/{t2}/save", data={"stage": "skipped", "back": "/app/qualified"})
@@ -72,7 +72,7 @@ def test_kept_tender_survives_a_verdict_change(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"q5.db")
     tid = _add(conn, "a1", "Echipament de retea")
-    accounts.create(conn, "rl", "password1", role="admin")
+    accounts.create(conn, "admin", "password1", role="admin")
     conn.close()
     c = _login(p)
     c.post(f"/app/qualified/{tid}/save", data={"stage": "in_progress", "back": "/app/qualified"})
@@ -85,7 +85,7 @@ def test_read_only_blocks_the_save(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"q6.db")
     tid = _add(conn, "a1", "Echipament de retea")
-    accounts.create(conn, "rl", "password1", role="admin")
+    accounts.create(conn, "admin", "password1", role="admin")
     ConfigStore(conn).set("web.read_only", True); conn.commit(); conn.close()
     c = _login(p)
     c.post(f"/app/qualified/{tid}/save", data={"stage": "won", "back": "/app/qualified"})
@@ -94,7 +94,7 @@ def test_moving_back_to_inbox_clears_the_row(tmp_path, monkeypatch):
     monkeypatch.delenv("TENDERENGINE_WEB_TOKEN", raising=False)
     p, conn = _fresh(tmp_path,"q7.db")
     tid = _add(conn, "a1", "Echipament de retea")
-    accounts.create(conn, "rl", "password1", role="admin"); conn.close()
+    accounts.create(conn, "admin", "password1", role="admin"); conn.close()
     c = _login(p)
     c.post(f"/app/qualified/{tid}/save", data={"stage": "skipped", "back": "/app/qualified"})
     assert "Echipament de retea" not in c.get("/app/inbox").text
