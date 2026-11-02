@@ -5,10 +5,12 @@ system integrator **which tenders it can actually win and at what margin**. Buil
 market (MTender + procurement websites), with Claude models doing the reading and reasoning and
 plain code doing everything that must be exact.
 
+[![CI](https://github.com/Madly222/mcp4tender/actions/workflows/ci.yml/badge.svg)](https://github.com/Madly222/mcp4tender/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.10%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-web%20UI-009688)
 ![SQLite](https://img.shields.io/badge/storage-SQLite-lightgrey)
 ![LLM](https://img.shields.io/badge/LLM-Claude%20(Haiku%20%2F%20Sonnet%20%2F%20Opus)-orange)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 <p align="center">
   <img src="docs/screenshots/01-dashboard.png" alt="Dashboard: open work, match scores, margins and deadlines" width="100%">
@@ -168,7 +170,13 @@ them with your own via the web settings page or `config_cli.py`.
 .venv/bin/python -m pytest tests -q
 ```
 
+The suite runs on every push in GitHub Actions on Python 3.10, 3.11 and 3.12.
+
 ## More
 
 The full development log — phases 0–7, operating commands and design notes — is in
 [docs/DEVLOG.ru.md](docs/DEVLOG.ru.md) (Russian).
+
+## License
+
+[MIT](LICENSE)
